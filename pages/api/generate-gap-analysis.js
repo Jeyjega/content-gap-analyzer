@@ -67,14 +67,11 @@ export default async function handler(req, res) {
        CALL 1 — GAP ANALYSIS
     ------------------------------------------- */
     const gapPrompt = `
-You are a senior content editor performing TRANSCRIPT-GROUNDED gap analysis.
+You are a senior content editor performing TRANSCRIPT-GROUNDED gap analysis with a focus on depth and detail.
 
-Your task is to analyze the transcript and identify ONLY gaps that are
-DIRECTLY IMPLIED but NOT FULLY DEVELOPED by the speaker.
+Your task is to analyze the transcript and identify only gaps that are directly mentioned or clearly implied in the transcript but not fully explained by the speaker. A gap means missing explanation of something the speaker brought up. The transcript is the SOLE source of truth.
 
-The transcript is the SOLE source of truth.
-
-⸻
+———
 
 OUTPUT JSON ONLY in the following format:
 
@@ -85,100 +82,94 @@ OUTPUT JSON ONLY in the following format:
       "title": "...",
       "suggestion": "...",
       "priority": "Critical | Medium | Minor",
-      "evidence": "Exact quote or faithful paraphrase from the transcript that justifies this gap"
+      "evidence": "..."
     }
   ],
-  "titles": ["...", "...", "..."],
-  "keywords": ["...", "..."]
+  "titles": ["...", "...", "...", "...", "..."],
+  "keywords": ["...", "...", "...", "...", "...", "...", "...", "...", "...", "..."]
 }
 
-⸻
 
-STRICT GAP ELIGIBILITY RULES (NON-NEGOTIABLE):
+———
 
-1️⃣ A gap is VALID ONLY IF:
-- The transcript explicitly mentions the topic, OR
-- The speaker clearly implies the topic but does not explain it fully
+STRICT GAP & DETAIL RULES (NON-NEGOTIABLE):
 
-2️⃣ You MUST NOT create gaps for:
-- Topics never mentioned or implied in the transcript
-- Generic best practices
-- "What would improve this content" ideas
-- **COMMON GENERIC GAPS**: budgeting frameworks, tools/apps, communities, success stories, inflation, credit management, accountability, lifestyle changes, financial education, support systems
-UNLESS the speaker directly referenced them
+1️⃣ Valid gaps only: A gap is valid only if the transcript explicitly mentions or clearly implies the topic and leaves important details unfinished. In other words, the speaker must have introduced the concept, decision, or claim, and not given the full explanation.
 
-3️⃣ Every gap MUST include an "evidence" field:
-- Use an exact quote if possible
-- Otherwise, use a faithful paraphrase
-- If no evidence exists → DO NOT CREATE THE GAP
+2️⃣ No invented or generic gaps: Do NOT create gaps for anything the speaker never mentioned or implied. Do not add generic “best practices” or broad advice not grounded in the transcript. Ignore common generic topics (e.g. budgeting tools, success stories, frameworks) unless the speaker directly referenced them. In short, every gap must stay strictly within the speaker’s words and hints.
 
-4️⃣ If the transcript is SHORT:
-- Under 300 words → MAX 3–5 gaps
-- Under 600 words → MAX 5–8 gaps
+3️⃣ Evidence required: Every gap must include a transcript quote (or faithful paraphrase) in the evidence field. This quote must directly support why the gap exists (e.g. it shows the speaker raised a point but didn’t elaborate). If you cannot find supporting text, do not invent the gap.
 
-5️⃣ If the transcript is LONG:
-- Gap count must scale with length
-- Long-form content → 15–25 gaps MAX
-- NEVER exceed what the transcript can support
+4️⃣ Short transcripts – few gaps: If the transcript is very short, output fewer gaps:
 
-6️⃣ Do NOT:
-- Invent missing topics
-- Add advice the speaker never hinted at
-- Repeat or overlap gaps
-- Merge unrelated ideas into one gap
+<300 words → 3–5 gaps max
 
-⸻
+300–600 words → 5–8 gaps max
+
+5️⃣ Long transcripts – depth is key: If the transcript is longer, output many gaps. Never under-produce gaps for length:
+
+2500 words: at least 12 gaps (prefer depth/detail gaps over new broad topics)
+
+4000 words: target 18–25 gaps, splitting complex ideas into sub-gaps
+If your initial gap list has fewer than ~10, re-scan the transcript specifically for under-explained decisions, assumptions, tradeoffs, or metrics to add more.
+
+6️⃣ Do NOT: Invent new topics or advice that the speaker did not suggest. Do not merge distinct issues or repeat overlapping gaps. Each gap title must be distinct and focused on one missing detail.
+
+7️⃣ Depth-check missing details: For every mentioned idea, ask: What is missing here? For example: if the speaker mentions a decision but gives no rationale, that missing “why” is a gap; if a process is mentioned with no steps, the missing steps are a gap; if an outcome is claimed without numbers, the missing metrics are a gap; if a belief or assumption is stated without justification, that is a gap; if a tradeoff or alternative is implied but not compared, that is a gap; if a constraint is mentioned without specifics (timeframe, scale, etc.), that is a gap. Any unexplained how/why/what/when around a mentioned topic should be flagged.
+
+8️⃣ Idea-level decomposition: Break down each paragraph or complex sentence into pieces. A single idea or paragraph can yield multiple gaps if different aspects are under-explained. If an idea is repeated or appears in multiple contexts, examine each occurrence for new missing angles. In short, do not collapse repeated or compound ideas into one; extract each distinct missing element as its own gap.
+
+———
 
 LENGTH-BASED GAP SCALING (MANDATORY):
 
-If transcript length > 2,500 words:
-- You MUST identify at least 12 gaps
-- Prefer depth gaps over new topics
+If transcript > 2500 words: identify at least 12 gaps (depth-focused).
 
-If transcript length > 4,000 words:
-- Target 15–25 gaps
-- Split complex ideas into multiple depth-based gaps
+If transcript > 4000 words: aim for 18–25 gaps, ensuring complex ideas are split across gaps.
 
-If fewer than 10 valid gaps exist:
-- Re-scan for under-explained decisions, assumptions, or tradeoffs
-- Do NOT invent new subject areas
+If fewer than ~10 gaps result on first pass, re-examine the transcript for any subtle, under-explained assumptions or tradeoffs to increase count.
 
-⸻
+Never stop early: The number of gaps must scale with transcript length and complexity, focusing on missing detail at each step.
+
+———
 
 PRIORITY RULES:
 
-- Critical → Core idea mentioned but left unclear or incomplete
-- Medium → Supporting idea briefly mentioned without depth
-- Minor → Optional clarification that improves clarity, not scope
+Critical – a core idea or claim is mentioned but left unclear or incomplete (high impact gap).
 
-⸻
+Medium – a supporting point is mentioned briefly without necessary depth.
+
+Minor – a clarifying detail that would help but isn’t essential to the main narrative.
+
+———
 
 SUMMARY RULES:
 
-- Summary must reflect ONLY what the speaker actually said
-- No interpretation, no extrapolation, no advice
+The summary must recount only what the speaker said, without interpretation or advice. (No extrapolation or new content in the summary.)
 
-⸻
+———
 
 TITLE & KEYWORD RULES:
 
-- Titles must be derived from transcript language  (More Powerfull)
-- Number of Suggested Titles must be 5 (More Powerfull)
-- Keywords must be present or clearly implied in the transcript (More Powerfull)
-- Number of Suggested Keywords must be 10 (More Powerfull)
-- Do NOT add SEO or marketing terms not used by the speaker
+Titles must be drawn from the transcript language (phrase the missing detail as stated or implied by speaker). Provide exactly 5 title suggestions.
 
-⸻
+Keywords must be taken from or clearly implied by the transcript. Provide exactly 10 keywords.
+
+Do not add any SEO/marketing terms or outside jargon not used by the speaker.
+
+———
 
 FINAL CHECK (DO NOT OUTPUT THIS):
 
-Before responding, verify:
-□ Every gap has transcript evidence  
-□ No new topics were introduced  
-□ Gap count matches transcript length  
-□ Output is strictly grounded in the speaker’s words  
+Every gap has direct transcript evidence.
 
-⸻
+No invented topics or advice.
+
+Gap count and depth match transcript length.
+
+Each gap focuses on a missing detail or explanation.
+
+Output is strictly grounded in the transcript.
 
 Return JSON ONLY.
 `;
