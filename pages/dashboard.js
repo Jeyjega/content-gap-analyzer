@@ -59,6 +59,47 @@ export default function Dashboard() {
   const [error, setError] = useState(null);
   const [showFallbackBanner, setShowFallbackBanner] = useState(false);
 
+  // New states for script progress
+  const [scriptProgress, setScriptProgress] = useState(0);
+  const [helperMessageIndex, setHelperMessageIndex] = useState(0);
+
+  const helperMessages = [
+    "This script will incorporate all identified gaps.",
+    "We’re carefully grounding everything in your original content.",
+    "This usually takes under a minute.",
+    "Almost there — final polish in progress."
+  ];
+
+  // Rotate helper messages
+  useEffect(() => {
+    let interval;
+    if ((status === 'generating-analysis' || status === 'script_generating') && analysisResult && !generatedScript) {
+      interval = setInterval(() => {
+        setHelperMessageIndex(prev => (prev + 1) % helperMessages.length);
+      }, 6000);
+    }
+    return () => clearInterval(interval);
+  }, [status, analysisResult, generatedScript]);
+
+  // Simulated progress for script generation
+  useEffect(() => {
+    let interval;
+    if ((status === 'generating-analysis' || status === 'script_generating') && analysisResult && !generatedScript) {
+      setScriptProgress(0);
+      interval = setInterval(() => {
+        setScriptProgress(prev => {
+          if (prev >= 98) return prev;
+          // Fast at first (0-50), then medium (50-80), then crawl (80-99)
+          const increment = prev < 50 ? 5 : prev < 80 ? 2 : 0.2;
+          return Math.min(prev + increment, 99);
+        });
+      }, 600);
+    } else if (generatedScript) {
+      setScriptProgress(100);
+    }
+    return () => clearInterval(interval);
+  }, [status, analysisResult, generatedScript]);
+
   // Format Selection State
   const [showFormatModal, setShowFormatModal] = useState(false);
   const [pendingAnalysisId, setPendingAnalysisId] = useState(null);
@@ -116,13 +157,19 @@ export default function Dashboard() {
 
   };
 
-  const resumeAnalysisWithFormat = async (choice) => {
+  const resumeAnalysisWithFormat = async (choice, analysisIdOverride) => {
     setShowFormatModal(false);
     setFormatChoice(choice);
 
     // Resume flow
     setStatus("generating-analysis");
-    log(`Resuming analysis ${pendingAnalysisId} with format=${choice}`);
+    const analysisId = analysisIdOverride || pendingAnalysisId;
+
+    if (!analysisId) {
+      throw new Error("Missing analysisId for resumeAnalysis");
+    }
+
+    log(`Resuming analysis ${analysisId} with format=${choice}`);
 
     try {
       const token = session.access_token;
@@ -131,27 +178,80 @@ export default function Dashboard() {
         "Authorization": `Bearer ${token}`
       };
 
-      const rGen = await fetch("/api/generate-gap-analysis", {
+      const formatMode = choice === "preserve" ? "interview" : "monologue";
+
+      const response = await fetch("/api/generate-gap-analysis", {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({
-          analysisId: pendingAnalysisId,
-          formatMode: choice === "preserve" ? "interview" : "monologue"
+          analysisId,
+          formatMode
         })
       });
 
-      if (!rGen.ok) {
-        const t = await rGen.text();
-        throw new Error(`generate-gap-analysis failed: ${t}`);
+      if (!response.ok) {
+        throw new Error(`Analysis failed: ${await response.text()}`);
       }
 
-      const genJson = await rGen.json();
-      const parsed = genJson.parsed ?? null;
-      setAnalysisResult(parsed);
-      setGeneratedScript(parsed?.suggested_script ?? parsed?.suggestedScript ?? genJson.raw_output ?? null);
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+
+      let buffer = "";
+
+      /* 
+         NDJSON STREAM PARSER
+      */
+      while (true) {
+        const { value, done } = await reader.read();
+
+        if (value) {
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          // Keep the last incomplete chunk in the buffer
+          buffer = lines.pop();
+
+          for (const line of lines) {
+            if (!line.trim()) continue;
+
+            try {
+              const event = JSON.parse(line);
+
+              if (event.status === "gaps_ready") {
+                log("Received: Gaps Ready");
+                setAnalysisResult(event); // Updates gaps UI immediately
+              }
+              else if (event.status === "script_generating") {
+                log("Received: Script Generating...");
+              }
+              else if (event.status === "script_ready") {
+                log("Received: Script Ready");
+                setGeneratedScript(event.script);
+              }
+              else if (event.status === "error") {
+                throw new Error(event.message);
+              }
+            } catch (parseErr) {
+              console.warn("Failed to parse JSON chunk:", line);
+            }
+          }
+        }
+
+        if (done) break;
+      }
+
+      // Clear final buffer if any
+      if (buffer.trim()) {
+        try {
+          const event = JSON.parse(buffer);
+          if (event.status === "script_ready") {
+            setGeneratedScript(event.script);
+          }
+        } catch (e) { /* ignore */ }
+      }
 
       setStatus("done");
-      log("Gap analysis generation complete.");
+      log("Analysis orchestration complete.");
+
     } catch (err) {
       console.error("resumeAnalysis error", err);
       setStatus("error");
@@ -381,32 +481,10 @@ export default function Dashboard() {
       }
 
       // 5) Call generate-gap-analysis (Default Monologue if not interview)
-      setStatus("generating-analysis");
-      log("Calling /api/generate-gap-analysis");
-      try {
-        const rGen = await fetch("/api/generate-gap-analysis", {
-          method: "POST",
-          headers: authHeaders,
-          body: JSON.stringify({ analysisId: newAnalysisId, formatMode: "monologue" }),
-        });
-
-        if (!rGen.ok) {
-          const t = await rGen.text();
-          throw new Error(`generate-gap-analysis failed: ${t}`);
-        }
-
-        const genJson = await rGen.json();
-        const parsed = genJson.parsed ?? null;
-        setAnalysisResult(parsed);
-        setGeneratedScript(parsed?.suggested_script ?? parsed?.suggestedScript ?? genJson.raw_output ?? null);
-
-        setStatus("done");
-        log("Gap analysis generation complete.");
-      } catch (err) {
-        console.error("generate-gap-analysis error", err);
-        setStatus("done"); // partially done
-        log(`Gap analysis error: ${err.message || String(err)}`);
-      }
+      // Reuse streaming orchestration for ALL content (interview + non-interview)
+      setPendingAnalysisId(newAnalysisId);
+      resumeAnalysisWithFormat("monologue", newAnalysisId);
+      return;
     } catch (err) {
       console.error("handleAnalyze error", err);
       setStatus("error");
@@ -734,7 +812,7 @@ export default function Dashboard() {
                   )}
 
                   {/* Suggested Script */}
-                  {(analysisResult?.suggested_script || analysisResult?.suggestedScript || generatedScript) && (
+                  {(analysisResult?.suggested_script || analysisResult?.suggestedScript || generatedScript || (isBusy && analysisResult)) && (
                     <div className="pt-8 border-t border-white/10">
                       <div className="flex items-center justify-between mb-4">
                         <h3 className="text-lg font-semibold text-white flex items-center gap-2">
@@ -745,22 +823,28 @@ export default function Dashboard() {
                           </div>
                           Derivative Script (Optional)
                         </h3>
+                        {(isBusy && !generatedScript) && (
+                          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 animate-pulse">
+                            Generating...
+                          </span>
+                        )}
                       </div>
                       <p className="text-xs text-slate-500 mb-4 ml-1">
                         This is a compressed, secondary version for clips, blogs, or summaries. It does not replace the original content.
                       </p>
-                      <div className="bg-[#0b0c15] rounded-2xl border border-white/10 font-mono text-sm text-slate-300 shadow-inner relative overflow-hidden">
-                        <div className="absolute top-0 left-0 right-0 h-10 bg-white/5 flex items-center px-4 justify-between border-b border-white/5">
+                      <div className="bg-[#0b0c15] rounded-2xl border border-white/10 font-mono text-sm text-slate-300 shadow-inner relative overflow-hidden min-h-[200px]">
+                        <div className="absolute top-0 left-0 right-0 h-10 bg-[#0b0c15] z-10 flex items-center px-4 justify-between border-b border-white/5">
                           <span className="text-[10px] uppercase tracking-widest font-bold text-slate-500">AI-Generated Script</span>
                           <Button
                             size="sm"
                             variant="secondary"
                             className="bg-transparent border-none text-slate-400 hover:text-white hover:bg-white/10 h-7 text-xs"
                             onClick={() => {
-                              navigator.clipboard.writeText(analysisResult?.suggested_script || generatedScript);
+                              navigator.clipboard.writeText(analysisResult?.suggested_script || generatedScript || "");
                               setScriptCopied(true);
                               setTimeout(() => setScriptCopied(false), 1200);
                             }}
+                            disabled={!generatedScript && !analysisResult?.suggested_script}
                           >
                             {scriptCopied ? (
                               <div className="flex items-center gap-1.5 text-green-400">
@@ -776,7 +860,27 @@ export default function Dashboard() {
                           </Button>
                         </div>
                         <div className="p-6 pt-14 whitespace-pre-wrap max-h-[500px] overflow-auto">
-                          {analysisResult?.suggested_script || analysisResult?.suggestedScript || generatedScript}
+                          {generatedScript || analysisResult?.suggested_script || analysisResult?.suggestedScript ? (
+                            <>
+                              {generatedScript || analysisResult?.suggested_script || analysisResult?.suggestedScript}
+                              {isBusy && (
+                                <span className="inline-block w-2 h-4 ml-1 bg-indigo-500 animate-pulse align-middle"></span>
+                              )}
+                            </>
+                          ) : (
+                            <div className="flex flex-col items-center justify-center h-40 space-y-4 opacity-80">
+                              <div className="w-48 h-1 bg-white/10 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-gradient-to-r from-indigo-500 to-indigo-400 rounded-full transition-all duration-300 ease-out"
+                                  style={{ width: `${Math.round(scriptProgress)}%` }}
+                                ></div>
+                              </div>
+                              <p className="text-xs font-mono text-indigo-300">Drafting script... {Math.round(scriptProgress)}%</p>
+                              <p className="text-[10px] text-indigo-400/50 mt-3 animate-pulse font-medium tracking-wide text-center ease-in-out duration-1000">
+                                {helperMessages[helperMessageIndex]}
+                              </p>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>

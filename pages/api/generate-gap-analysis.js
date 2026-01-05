@@ -4,6 +4,7 @@ import { openai } from "../../lib/openaiServer";
 export default async function handler(req, res) {
   const formatMode = req.body.formatMode || "interview";
   // allowed values: "interview" | "monologue"
+
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
@@ -43,17 +44,21 @@ export default async function handler(req, res) {
       .single();
 
     const transcript = analysis?.transcript || "";
-    const preserveInterviewMode = formatMode === "interview"; // or derive from analysis if you have a flag
+    const preserveInterviewMode = formatMode === "interview";
+
     if (transcript.length < 200) {
       return res.status(400).json({ error: "Transcript too short" });
     }
 
+    // ENABLE STREAMING
+    res.writeHead(200, {
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      "Connection": "keep-alive"
+    });
+
     console.log("FORMAT MODE:", formatMode);
     console.log("PRESERVE INTERVIEW MODE:", preserveInterviewMode);
-    console.log(
-      "OPENING INPUT TYPE:",
-      preserveInterviewMode ? "INTERVIEW TRANSCRIPT" : "MONOLOGUE-SEED"
-    );
 
     const originalLength = transcript.length;
     const targetLength = Math.floor(originalLength * 0.95);
@@ -62,24 +67,120 @@ export default async function handler(req, res) {
        CALL 1 — GAP ANALYSIS
     ------------------------------------------- */
     const gapPrompt = `
-You are a senior content strategist.
+You are a senior content editor performing TRANSCRIPT-GROUNDED gap analysis.
 
-Analyze the transcript and return JSON ONLY:
+Your task is to analyze the transcript and identify ONLY gaps that are
+DIRECTLY IMPLIED but NOT FULLY DEVELOPED by the speaker.
+
+The transcript is the SOLE source of truth.
+
+⸻
+
+OUTPUT JSON ONLY in the following format:
 
 {
   "summary": "...",
   "gaps": [
-    { "title": "...", "suggestion": "...", "priority": "Critical|Medium|Minor" }
+    {
+      "title": "...",
+      "suggestion": "...",
+      "priority": "Critical | Medium | Minor",
+      "evidence": "Exact quote or faithful paraphrase from the transcript that justifies this gap"
+    }
   ],
   "titles": ["...", "...", "..."],
   "keywords": ["...", "..."]
 }
 
-Rules:
+⸻
+
+STRICT GAP ELIGIBILITY RULES (NON-NEGOTIABLE):
+
+1️⃣ A gap is VALID ONLY IF:
+- The transcript explicitly mentions the topic, OR
+- The speaker clearly implies the topic but does not explain it fully
+
+2️⃣ You MUST NOT create gaps for:
+- Topics never mentioned or implied in the transcript
+- Generic best practices
+- "What would improve this content" ideas
+- **COMMON GENERIC GAPS**: budgeting frameworks, tools/apps, communities, success stories, inflation, credit management, accountability, lifestyle changes, financial education, support systems
+UNLESS the speaker directly referenced them
+
+3️⃣ Every gap MUST include an "evidence" field:
+- Use an exact quote if possible
+- Otherwise, use a faithful paraphrase
+- If no evidence exists → DO NOT CREATE THE GAP
+
+4️⃣ If the transcript is SHORT:
+- Under 300 words → MAX 3–5 gaps
+- Under 600 words → MAX 5–8 gaps
+
+5️⃣ If the transcript is LONG:
 - Gap count must scale with length
-- Long content → 15–25 gaps
-- Do NOT invent gaps
-- Do NOT repeat gaps
+- Long-form content → 15–25 gaps MAX
+- NEVER exceed what the transcript can support
+
+6️⃣ Do NOT:
+- Invent missing topics
+- Add advice the speaker never hinted at
+- Repeat or overlap gaps
+- Merge unrelated ideas into one gap
+
+⸻
+
+LENGTH-BASED GAP SCALING (MANDATORY):
+
+If transcript length > 2,500 words:
+- You MUST identify at least 12 gaps
+- Prefer depth gaps over new topics
+
+If transcript length > 4,000 words:
+- Target 15–25 gaps
+- Split complex ideas into multiple depth-based gaps
+
+If fewer than 10 valid gaps exist:
+- Re-scan for under-explained decisions, assumptions, or tradeoffs
+- Do NOT invent new subject areas
+
+⸻
+
+PRIORITY RULES:
+
+- Critical → Core idea mentioned but left unclear or incomplete
+- Medium → Supporting idea briefly mentioned without depth
+- Minor → Optional clarification that improves clarity, not scope
+
+⸻
+
+SUMMARY RULES:
+
+- Summary must reflect ONLY what the speaker actually said
+- No interpretation, no extrapolation, no advice
+
+⸻
+
+TITLE & KEYWORD RULES:
+
+- Titles must be derived from transcript language  (More Powerfull)
+- Number of Suggested Titles must be 5 (More Powerfull)
+- Keywords must be present or clearly implied in the transcript (More Powerfull)
+- Number of Suggested Keywords must be 10 (More Powerfull)
+- Do NOT add SEO or marketing terms not used by the speaker
+
+⸻
+
+FINAL CHECK (DO NOT OUTPUT THIS):
+
+Before responding, verify:
+□ Every gap has transcript evidence  
+□ No new topics were introduced  
+□ Gap count matches transcript length  
+□ Output is strictly grounded in the speaker’s words  
+
+⸻
+
+Return JSON ONLY.
 `;
 
     const gapResp = await openai.chat.completions.create({
@@ -96,9 +197,32 @@ Rules:
     const parsedAnalysis = JSON.parse(gapResp.choices[0].message.content);
     const gaps = parsedAnalysis.gaps || [];
 
+    // CRITICAL UPDATE: EMIT GAPS IMMEDIATELY
+    res.write(JSON.stringify({
+      status: "gaps_ready",
+      gaps: parsedAnalysis.gaps,
+      summary: parsedAnalysis.summary,
+      titles: parsedAnalysis.titles,
+      keywords: parsedAnalysis.keywords
+    }) + "\n");
+
+    // Also save interim result to DB (silent background save)
+    await supabase
+      .from("analyses")
+      .update({
+        summary: parsedAnalysis.summary,
+        gaps: parsedAnalysis.gaps,
+        titles: parsedAnalysis.titles,
+        keywords: parsedAnalysis.keywords
+      })
+      .eq("id", aId);
+
     /* -------------------------------------------
        CALL 2 — OUTLINE + HARD BUDGETS
     ------------------------------------------- */
+    // Optional: Emit progress event
+    res.write(JSON.stringify({ status: "script_generating" }) + "\n");
+
     const outlinePrompt = `
 Create a STRICT outline for a derivative script.
 
@@ -313,15 +437,10 @@ Rules:
     finalScript += closingResp.choices[0].message.content.trim();
 
     /* -------------------------------------------
-   FORMAT LAYER — MONOLOGUE (POST-PROCESS ONLY)
-------------------------------------------- */
-    /* -------------------------------------------
        FORMAT LAYER — MONOLOGUE (POST-PROCESS ONLY)
     ------------------------------------------- */
 
     let renderedScript = finalScript;
-
-
 
     if (formatMode === "monologue") {
       const monologueResp = await openai.chat.completions.create({
@@ -518,8 +637,9 @@ No meta commentary.
 
       renderedScript = monologueResp.choices[0].message.content.trim();
     }
+
     /* -------------------------------------------
-       SAVE RESULT
+       SAVE RESULT & STREAM END
     ------------------------------------------- */
     const finalPayload = {
       ...parsedAnalysis,
@@ -531,13 +651,16 @@ No meta commentary.
       .update({ generated_script: JSON.stringify(finalPayload) })
       .eq("id", aId);
 
-    return res.status(200).json({
-      analysisId: aId,
-      parsed: finalPayload
-    });
+    // Emit Final Event
+    res.write(JSON.stringify({ status: "script_ready", script: renderedScript }) + "\n");
+    res.end();
 
   } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: "Server error" });
+    console.error("Error in generate-gap-analysis:", err);
+    if (!res.headersSent) {
+      return res.status(500).json({ error: "Server error" });
+    }
+    res.write(JSON.stringify({ status: "error", message: "Stream interrupted" }) + "\n");
+    res.end();
   }
 }
