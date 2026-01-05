@@ -136,8 +136,8 @@ export default function Dashboard() {
         headers: authHeaders,
         body: JSON.stringify({
           analysisId: pendingAnalysisId,
-          outputFormat: choice
-        }),
+          formatMode: choice === "preserve" ? "interview" : "monologue"
+        })
       });
 
       if (!rGen.ok) {
@@ -387,7 +387,7 @@ export default function Dashboard() {
         const rGen = await fetch("/api/generate-gap-analysis", {
           method: "POST",
           headers: authHeaders,
-          body: JSON.stringify({ analysisId: newAnalysisId, outputFormat: "monologue" }),
+          body: JSON.stringify({ analysisId: newAnalysisId, formatMode: "monologue" }),
         });
 
         if (!rGen.ok) {
