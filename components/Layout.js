@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import LogoutButton from '@/components/LogoutButton';
+import UserMenu from '@/components/UserMenu';
 
 export default function Layout({ children, bgClass = "bg-slate-50", headerVariant = "light" }) {
     const router = useRouter();
@@ -46,7 +47,7 @@ export default function Layout({ children, bgClass = "bg-slate-50", headerVarian
                             </svg>
                         </div>
                         <span className={`text-lg font-bold tracking-tight transition-colors ${isDarkHeader ? 'text-white group-hover:text-indigo-300' : 'text-slate-900 group-hover:text-indigo-600'}`}>
-                            ContentGap
+                            GapGens
                         </span>
                     </Link>
 
@@ -59,12 +60,7 @@ export default function Layout({ children, bgClass = "bg-slate-50", headerVarian
                     <div className="flex items-center gap-4">
                         {!loading && (
                             user ? (
-                                <div className="flex items-center gap-4">
-                                    <div className={`text-sm font-medium ${isDarkHeader ? 'text-white' : 'text-slate-600'}`}>
-                                        {user.email}
-                                    </div>
-                                    <LogoutButton />
-                                </div>
+                                <UserMenu user={user} isDarkHeader={isDarkHeader} />
                             ) : (
                                 <Link
                                     href="/login"
@@ -91,7 +87,7 @@ export default function Layout({ children, bgClass = "bg-slate-50", headerVarian
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                                 </svg>
                             </div>
-                            <span className={`text-sm font-medium ${isDarkHeader ? 'text-white' : 'text-slate-500'}`}>ContentGap Analyzer</span>
+                            <span className={`text-sm font-medium ${isDarkHeader ? 'text-white' : 'text-slate-500'}`}>GapGens Analyzer</span>
                         </div>
                         <div className={`flex gap-6 text-sm ${isDarkHeader ? 'text-slate-400' : 'text-slate-400'}`}>
                             <a href="#" className={`transition-colors ${isDarkHeader ? 'hover:text-white' : 'hover:text-slate-600'}`}>Privacy</a>

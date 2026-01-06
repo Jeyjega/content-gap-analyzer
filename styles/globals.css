@@ -87,6 +87,12 @@ html {
   }
 }
 
+@keyframes shine {
+  100% {
+    left: 125%;
+  }
+}
+
 @keyframes shimmer {
   0% {
     background-position: -1000px 0;
@@ -99,6 +105,10 @@ html {
 
 .animate-float {
   animation: float 6s ease-in-out infinite;
+}
+
+.animate-shine {
+  animation: shine 3s infinite;
 }
 
 .animate-pulse-soft {

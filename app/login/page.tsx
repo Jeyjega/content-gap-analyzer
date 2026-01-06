@@ -66,7 +66,7 @@ export default function LoginPage() {
                 {/* Floating Brand Label */}
                 <div className="mt-8 text-center">
                     <p className="text-sm font-medium text-white/20 tracking-widest uppercase text-[10px]">
-                        Powered by ContentGap AI
+                        Powered by GapGens
                     </p>
                 </div>
             </div>

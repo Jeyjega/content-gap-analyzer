@@ -2,7 +2,7 @@ import '@/styles/globals.css';
 import { AuthProvider } from '@/components/AuthProvider';
 
 export const metadata = {
-    title: 'ContentGap Analyzer',
+    title: 'GapGens Analyzer',
     description: 'Identify content gaps and generate optimized scripts.',
 };
 
