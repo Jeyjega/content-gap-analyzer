@@ -162,8 +162,7 @@ html {
 
 /* Base Styles */
 body {
-  background-color: #fafafa;
-  /* Very light gray, almost white */
+  background-color: #030014;
   color: #0f172a;
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;

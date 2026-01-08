@@ -43,7 +43,7 @@ export default function Home() {
             <span className="tracking-wide uppercase">Analysis-First Content Engine</span>
           </div>
 
-          <h1 className="font-display text-5xl md:text-7xl font-bold tracking-tight text-white mb-6 max-w-4xl leading-[1.1] animate-slide-up">
+          <h1 className="font-display text-4xl md:text-5xl lg:text-7xl font-bold tracking-tight text-white mb-6 max-w-4xl leading-[1.1] animate-slide-up">
             Turn Existing Content into <br />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-300 via-white to-indigo-300">
               Clear, High-Impact Scripts
@@ -51,18 +51,18 @@ export default function Home() {
           </h1>
 
           <p className="text-lg md:text-xl text-slate-400 max-w-2xl mb-10 leading-relaxed animate-slide-up font-light" style={{ animationDelay: '0.1s' }}>
-            GapGens analyzes your content, identifies what’s missing, and produces grounded derivative scripts — <span className="text-slate-300 font-medium">without hallucination or fluff.</span>
+            Paste a YouTube video, blog, or script. GapGens finds what’s missing and gives you a stronger version, ready to record or publish.
           </p>
 
           <div className="flex flex-col sm:flex-row gap-5 w-full justify-center animate-slide-up" style={{ animationDelay: '0.2s' }}>
             <Link href="/dashboard">
               <Button size="xl" variant="gradient" className="w-full sm:w-auto shadow-xl shadow-indigo-900/20 hover:shadow-indigo-500/30 transition-all font-semibold min-w-[200px]">
-                Analyze My Content
+                Get Started Free – Analyze a URL
               </Button>
             </Link>
             <Link href="#how-it-works">
-              <Button variant="outline" size="xl" className="w-full sm:w-auto bg-white/5 border-white/10 text-white hover:bg-white/10 backdrop-blur-sm min-w-[180px]">
-                See How It Works
+              <Button variant="outline" size="xl" className="w-full sm:w-auto bg-white/10 border-white/20 text-white hover:bg-white/20 backdrop-blur-sm min-w-[180px]">
+                Watch Product Demo
               </Button>
             </Link>
           </div>

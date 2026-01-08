@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import LogoutButton from '@/components/LogoutButton';
 import UserMenu from '@/components/UserMenu';
+import Footer from '@/components/Footer';
 
 export default function Layout({ children, bgClass = "bg-slate-50", headerVariant = "light" }) {
     const router = useRouter();
@@ -78,33 +79,7 @@ export default function Layout({ children, bgClass = "bg-slate-50", headerVarian
                 {children}
             </main>
 
-            <footer className={`border-t py-12 ${isDarkHeader ? 'bg-[#030014] border-white/5 text-slate-400' : 'bg-white border-slate-100/60 text-slate-500'}`}>
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="flex flex-col md:flex-row justify-between items-center gap-6">
-                        <div className="flex items-center gap-2.5 opacity-80 hover:opacity-100 transition-opacity">
-                            <div className={`w-6 h-6 rounded-md flex items-center justify-center ${isDarkHeader ? 'bg-white/10 text-white' : 'bg-slate-100 text-slate-400'}`}>
-                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                                </svg>
-                            </div>
-                            <span className={`text-sm font-medium ${isDarkHeader ? 'text-white' : 'text-slate-500'}`}>GapGens Analyzer</span>
-                        </div>
-                        <div className={`flex gap-6 text-sm ${isDarkHeader ? 'text-slate-400' : 'text-slate-400'}`}>
-                            <a href="#" className={`transition-colors ${isDarkHeader ? 'hover:text-white' : 'hover:text-slate-600'}`}>Privacy</a>
-                            <a href="#" className={`transition-colors ${isDarkHeader ? 'hover:text-white' : 'hover:text-slate-600'}`}>Terms</a>
-                            <a href="#" className={`transition-colors ${isDarkHeader ? 'hover:text-white' : 'hover:text-slate-600'}`}>Twitter</a>
-                        </div>
-                        <div className="flex flex-col items-end gap-1">
-                            <p className="text-xs opacity-70">
-                                Secure. Your analyzed content always stays private.
-                            </p>
-                            <p className="text-xs">
-                                © {new Date().getFullYear()} All rights reserved.
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            </footer>
+            <Footer isDark={isDarkHeader} />
         </div>
     );
 }

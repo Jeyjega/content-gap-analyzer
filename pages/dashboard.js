@@ -629,7 +629,7 @@ export default function Dashboard() {
                         setUserText(e.target.value);
                         if (showFallbackBanner) setShowFallbackBanner(false);
                       }}
-                      placeholder="Paste your content text here (min 50 chars)..."
+                      placeholder="Paste your content text here..."
                       className={`w-full p-4 h-32 rounded-xl border-none bg-white/5 focus:bg-white/10 focus:ring-2 focus:ring-indigo-500/50 text-white placeholder:text-slate-500 text-base transition-all resize-none ${isHighlighting ? "ring-2 ring-indigo-500 shadow-[0_0_20px_rgba(99,102,241,0.3)] bg-white/10 scale-[1.01]" : ""
                         }`}
                     />
