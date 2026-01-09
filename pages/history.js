@@ -252,6 +252,8 @@ export default function HistoryPage() {
                     const isBlog = inferredType === 'blog';
                     const isText = inferredType === 'text';
 
+                    const contentTarget = analysis?.metadata?.content_target;
+
                     // nice label for secondary row
                     const getSecondaryLabel = () => {
                       if (isBlog && video_url) {
@@ -284,6 +286,13 @@ export default function HistoryPage() {
                                   }`}>
                                   {isBlog ? 'WEBSITE' : (isText ? 'TEXT' : 'YOUTUBE')}
                                 </span>
+
+                                {/* Output Target Badge */}
+                                {contentTarget && (
+                                  <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border bg-purple-500/10 text-purple-400 border-purple-500/20 flex items-center gap-1">
+                                    <span className="opacity-50">FOR</span> {contentTarget}
+                                  </span>
+                                )}
 
                                 {getSecondaryLabel() && (
                                   <div className="text-xs text-slate-400 font-mono bg-white/5 px-2 py-0.5 rounded inline-block border border-white/10">

@@ -73,7 +73,7 @@ export default function Dashboard() {
   // Rotate helper messages
   useEffect(() => {
     let interval;
-    if ((status === 'generating-analysis' || status === 'script_generating') && analysisResult && !generatedScript) {
+    if ((status === 'generating-analysis' || status === 'script_generating' || status === 'regenerating') && analysisResult && !generatedScript) {
       interval = setInterval(() => {
         setHelperMessageIndex(prev => (prev + 1) % helperMessages.length);
       }, 6000);
@@ -84,7 +84,7 @@ export default function Dashboard() {
   // Simulated progress for script generation
   useEffect(() => {
     let interval;
-    if ((status === 'generating-analysis' || status === 'script_generating') && analysisResult && !generatedScript) {
+    if ((status === 'generating-analysis' || status === 'script_generating' || status === 'regenerating') && analysisResult && !generatedScript) {
       setScriptProgress(0);
       interval = setInterval(() => {
         setScriptProgress(prev => {
@@ -104,7 +104,9 @@ export default function Dashboard() {
   const [showFormatModal, setShowFormatModal] = useState(false);
   const [pendingAnalysisId, setPendingAnalysisId] = useState(null);
   const [formatChoice, setFormatChoice] = useState(null); // 'preserve' | 'monologue'
+
   const [contentTarget, setContentTarget] = useState("youtube"); // 'youtube' | 'blog' | 'linkedin' | 'x'
+  const [selectedPlatform, setSelectedPlatform] = useState(null); // For post-analysis switching
 
   const [isHighlighting, setIsHighlighting] = useState(false);
   const [isTranscriptExpanded, setIsTranscriptExpanded] = useState(true);
@@ -261,6 +263,95 @@ export default function Dashboard() {
     }
   };
 
+  const handleRegenerateScript = async (newPlatform) => {
+    if (!newPlatform) return;
+    // Removed duplicate check to allow explicit regeneration via button
+    // if (newPlatform === (selectedPlatform || contentTarget)) return;
+
+    // Check bounds
+    if (!analysisId || !analysisResult?.gaps) {
+      console.error("Cannot regenerate: missing analysisId or gaps");
+      return;
+    }
+
+    setSelectedPlatform(newPlatform);
+    setStatus("regenerating");
+    // Clear current script to show loading state effectively or keep it and show overlay
+    setGeneratedScript("");
+
+    // We'll treat "regenerating" similar to "script_generating" for helper text
+    setScriptProgress(0);
+
+    log(`Regenerating script for platform: ${newPlatform}`);
+
+    try {
+      const token = session.access_token;
+
+      const response = await fetch("/api/generate-gap-analysis", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          analysisId,
+          regenerateScript: true,
+          targetPlatform: newPlatform,
+          gaps: analysisResult.gaps,
+          summary: analysisResult.summary, // Pass these to preserve DB consistency if needed
+          titles: analysisResult.titles,
+          keywords: analysisResult.keywords,
+          formatMode: "monologue"
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Regenerate failed: ${await response.text()}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let buffer = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (value) {
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop();
+
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const event = JSON.parse(line);
+              if (event.status === "script_ready") {
+                setGeneratedScript(event.script);
+                setStatus("done");
+              }
+            } catch (e) { console.warn("Parse error", e); }
+          }
+        }
+        if (done) break;
+      }
+
+      // Final flush
+      if (buffer.trim()) {
+        try {
+          const event = JSON.parse(buffer);
+          if (event.status === "script_ready") {
+            setGeneratedScript(event.script);
+            setStatus("done");
+          }
+        } catch (e) { }
+      }
+
+    } catch (err) {
+      console.error("Regeneration error", err);
+      setError(err.message);
+      setStatus("done"); // Reset to done so UI recovers
+    }
+  };
+
   const handleAnalyze = async () => {
     if (!session?.access_token) {
       setError("User session invalid. Please log in again.");
@@ -282,6 +373,7 @@ export default function Dashboard() {
     setShowFormatModal(false);
     setPendingAnalysisId(null);
     setFormatChoice(null);
+    setSelectedPlatform(null); // Reset post-analysis selection on new analysis
 
     log(`Starting analysis flow (mode=${mode})...`);
 
@@ -497,7 +589,7 @@ export default function Dashboard() {
     }
   };
 
-  const isBusy = ["transcribing", "fetching-web", "creating-analysis", "creating-embeddings", "generating-analysis"].includes(status);
+  const isBusy = ["transcribing", "fetching-web", "creating-analysis", "creating-embeddings", "generating-analysis", "regenerating"].includes(status);
 
   // Helpers for UI state
   const getAnalyzeButtonText = () => {
@@ -912,35 +1004,74 @@ export default function Dashboard() {
                           </span>
                         )}
                       </div>
-                      <p className="text-xs text-slate-500 mb-4 ml-1">
-                        This is a compressed, secondary version for clips, blogs, or summaries. It does not replace the original content.
-                      </p>
+                      <div className="flex items-center gap-4 mb-4">
+                        {/* Platform Selector */}
+                        <div className="relative group">
+                          <select
+                            value={selectedPlatform || contentTarget}
+                            onChange={(e) => handleRegenerateScript(e.target.value)}
+                            disabled={isBusy}
+                            className="appearance-none bg-white/5 border border-white/20 rounded-lg py-2 pl-3 pr-10 text-sm font-medium text-white focus:outline-none focus:border-indigo-500 hover:border-indigo-500 hover:bg-white/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm cursor-pointer"
+                          >
+                            <option value="youtube" className="bg-[#0b0c15]">YouTube</option>
+                            <option value="blog" className="bg-[#0b0c15]">Blog</option>
+                            <option value="linkedin" className="bg-[#0b0c15]">LinkedIn</option>
+                            <option value="x" className="bg-[#0b0c15]">X (Twitter)</option>
+                          </select>
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 group-hover:text-indigo-400 transition-colors">
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                          </div>
+                        </div>
+
+                        <p className="text-xs text-slate-500 ml-1">
+                          Refine formatting without changing insights.
+                        </p>
+                      </div>
                       <div className="bg-[#0b0c15] rounded-2xl border border-white/10 font-mono text-sm text-slate-300 shadow-inner relative overflow-hidden min-h-[200px]">
                         <div className="absolute top-0 left-0 right-0 h-10 bg-[#0b0c15] z-10 flex items-center px-4 justify-between border-b border-white/5">
                           <span className="text-[10px] uppercase tracking-widest font-bold text-slate-500">AI-Generated Script</span>
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            className="bg-transparent border-none text-slate-400 hover:text-white hover:bg-white/10 h-7 text-xs"
-                            onClick={() => {
-                              navigator.clipboard.writeText(analysisResult?.suggested_script || generatedScript || "");
-                              setScriptCopied(true);
-                              setTimeout(() => setScriptCopied(false), 1200);
-                            }}
-                            disabled={!generatedScript && !analysisResult?.suggested_script}
-                          >
-                            {scriptCopied ? (
-                              <div className="flex items-center gap-1.5 text-green-400">
-                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                                <span className="font-semibold">Copied</span>
-                              </div>
-                            ) : (
-                              <div className="flex items-center gap-1.5">
-                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" /></svg>
-                                Copy
-                              </div>
-                            )}
-                          </Button>
+                          <div className="flex items-center gap-2">
+                            {/* Regenerate Button */}
+                            <div className="relative">
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                className="!bg-white/5 !border !border-white/10 !text-slate-300 hover:!text-white hover:!bg-indigo-600 hover:!border-indigo-600 h-8 px-3 gap-2 flex items-center justify-center transition-all group shadow-sm bg-transparent"
+                                onClick={() => handleRegenerateScript(selectedPlatform || contentTarget)}
+                                disabled={isBusy || !generatedScript && !analysisResult?.suggested_script}
+                                title="Regenerate script"
+                              >
+                                <svg className={`w-4 h-4 text-indigo-400 group-hover:text-white transition-colors ${status === 'regenerating' ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                                <span className="font-medium">Regenerate</span>
+                              </Button>
+                            </div>
+
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              className="bg-transparent border-none text-slate-400 hover:text-white hover:bg-white/10 h-7 text-xs"
+                              onClick={() => {
+                                navigator.clipboard.writeText(analysisResult?.suggested_script || generatedScript || "");
+                                setScriptCopied(true);
+                                setTimeout(() => setScriptCopied(false), 1200);
+                              }}
+                              disabled={!generatedScript && !analysisResult?.suggested_script}
+                            >
+                              {scriptCopied ? (
+                                <div className="flex items-center gap-1.5 text-green-400">
+                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                                  <span className="font-semibold">Copied</span>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-1.5">
+                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" /></svg>
+                                  Copy
+                                </div>
+                              )}
+                            </Button>
+                          </div>
                         </div>
                         <div className="p-6 pt-14 whitespace-pre-wrap max-h-[500px] overflow-auto">
                           {generatedScript || analysisResult?.suggested_script || analysisResult?.suggestedScript ? (
@@ -959,7 +1090,7 @@ export default function Dashboard() {
                                 ></div>
                               </div>
                               <p className="text-xs font-mono text-indigo-300">Drafting script... {Math.round(scriptProgress)}%</p>
-                              <p className="text-[10px] text-indigo-400/50 mt-3 animate-pulse font-medium tracking-wide text-center ease-in-out duration-1000">
+                              <p className="text-xs text-indigo-300 mt-3 animate-pulse font-medium tracking-wide text-center">
                                 {helperMessages[helperMessageIndex]}
                               </p>
                             </div>

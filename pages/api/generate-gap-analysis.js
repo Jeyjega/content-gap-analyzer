@@ -66,7 +66,25 @@ export default async function handler(req, res) {
     /* -------------------------------------------
        CALL 1 — GAP ANALYSIS
     ------------------------------------------- */
-    const gapPrompt = `
+
+
+    let parsedAnalysis;
+    const regenerateScript = req.body.regenerateScript === true;
+    const clientGaps = req.body.gaps;
+
+    /* -------------------------------------------
+       CALL 1 — GAP ANALYSIS (OR SKIP)
+    ------------------------------------------- */
+    if (regenerateScript && Array.isArray(clientGaps)) {
+      console.log("REGENERATING SCRIPT ONLY - Skipping Gap Analysis");
+      parsedAnalysis = {
+        summary: req.body.summary || "",
+        gaps: clientGaps,
+        titles: req.body.titles || [],
+        keywords: req.body.keywords || []
+      };
+    } else {
+      const gapPrompt = `
 You are a senior content editor performing TRANSCRIPT-GROUNDED gap analysis with a focus on depth and detail.
 
 Your task is to analyze the transcript and identify only gaps that are directly mentioned or clearly implied in the transcript but not fully explained by the speaker. A gap means missing explanation of something the speaker brought up. The transcript is the SOLE source of truth.
@@ -121,6 +139,26 @@ If your initial gap list has fewer than ~10, re-scan the transcript specifically
 
 ———
 
+IMPORTANT — SUGGESTION FIELD RULE:
+
+The "suggestion" field MUST describe the missing explanation,
+NOT propose adding new examples, tools, steps, or content.
+
+❌ Do NOT write suggestions like:
+- "Provide examples of..."
+- "Explain tools or methods..."
+- "Introduce ways to..."
+
+✅ Instead, write suggestions like:
+- "The speaker mentions X but does not explain how or why."
+- "The rationale behind X is not clarified."
+- "The tradeoff or reasoning for X is left unexplained."
+
+If a detail does not exist in the transcript, the suggestion must
+describe the absence — NOT propose adding new material.
+
+———
+
 LENGTH-BASED GAP SCALING (MANDATORY):
 
 If transcript > 2500 words: identify at least 12 gaps (depth-focused).
@@ -159,6 +197,14 @@ Do not add any SEO/marketing terms or outside jargon not used by the speaker.
 
 ———
 
+HARD EXCLUSION RULE:
+
+If the speaker explicitly states they did NOT use a tool, system,
+framework, or method, you MUST NOT create a gap requesting
+tools, methods, or systems for that topic.
+
+———
+
 FINAL CHECK (DO NOT OUTPUT THIS):
 
 Every gap has direct transcript evidence.
@@ -174,18 +220,20 @@ Output is strictly grounded in the transcript.
 Return JSON ONLY.
 `;
 
-    const gapResp = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: gapPrompt },
-        { role: "user", content: transcript.slice(0, 4000) }
-      ],
-      response_format: { type: "json_object" },
-      temperature: 0.2,
-      max_tokens: 3000
-    });
+      const gapResp = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: gapPrompt },
+          { role: "user", content: transcript.slice(0, 4000) }
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0.2,
+        max_tokens: 3000
+      });
 
-    const parsedAnalysis = JSON.parse(gapResp.choices[0].message.content);
+      parsedAnalysis = JSON.parse(gapResp.choices[0].message.content);
+    }
+
     const gaps = parsedAnalysis.gaps || [];
 
     // CRITICAL UPDATE: EMIT GAPS IMMEDIATELY
@@ -197,16 +245,18 @@ Return JSON ONLY.
       keywords: parsedAnalysis.keywords
     }) + "\n");
 
-    // Also save interim result to DB (silent background save)
-    await supabase
-      .from("analyses")
-      .update({
-        summary: parsedAnalysis.summary,
-        gaps: parsedAnalysis.gaps,
-        titles: parsedAnalysis.titles,
-        keywords: parsedAnalysis.keywords
-      })
-      .eq("id", aId);
+    // Also save interim result to DB (silent background save) - Skip if regenerating to avoid overhead or partial overwrites
+    if (!regenerateScript) {
+      await supabase
+        .from("analyses")
+        .update({
+          summary: parsedAnalysis.summary,
+          gaps: parsedAnalysis.gaps,
+          titles: parsedAnalysis.titles,
+          keywords: parsedAnalysis.keywords
+        })
+        .eq("id", aId);
+    }
 
     /* -------------------------------------------
        CALL 2 — OUTLINE + HARD BUDGETS
@@ -434,21 +484,28 @@ Rules:
     let renderedScript = finalScript;
 
     if (formatMode === "monologue") {
-      const monologueResp = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content: `
-🚫 GAPGENS MONOLOGUE — PRODUCTION MODE (FINAL)
+      const metadata = analysis?.metadata || {};
+      const targetPlatform = req.body.targetPlatform || metadata.content_target || "youtube";
+      const wordCount = transcript.split(/\s+/).length;
 
-You are converting an INTERVIEW TRANSCRIPT into a SINGLE-SPEAKER, FIRST-PERSON EXPERT MONOLOGUE.
+      const systemPrompt = `
+🧠 SYSTEM ROLE (ANTIGRAVITY)
 
-This is a TRANSFORMATION TASK, not content creation.
+You are GapGens Derivative Script Engine.
+
+Your job is to generate a platform-optimized derivative script
+using ONLY the transcript and the identified gaps.
+
+This is a TRANSFORMATION task, not content creation.
+
+You MUST respect:
+	•	Transcript fidelity
+	•	Gap integrity
+	•	Platform-specific delivery rules
 
 ⸻
 
-🔹 AUTHORITATIVE INPUTS
+🔹 AUTHORITATIVE INPUTS (NON-NEGOTIABLE)
 
 Transcript (sole source of truth):
 [TRANSCRIPT]
@@ -457,173 +514,399 @@ Identified Gaps (JSON, ordered):
 [GAPS_JSON]
 
 Original Word Count:
-[COUNT]
+${wordCount}
+
+Target Platform (EXACT value, one of):
+${targetPlatform}
+Allowed values:
+	•	youtube
+	•	blog
+	•	linkedin
+	•	x
 
 ⸻
 
-🔹 NON-NEGOTIABLE OUTPUT CONSTRAINTS
+🔹 CRITICAL SEPARATION OF CONCERNS
+	•	GAPS are platform-agnostic
+	•	PLATFORM affects expression, not truth
 
-1️⃣ LENGTH (STRICT)
-	•	If [COUNT] ≥ 1,000 words:
-	•	Final output must be 60%–80% of [COUNT] words
-	•	If [COUNT] < 1,000 words:
-	•	Final output must be the greater of:
-	•	60%–80% of [COUNT], OR
-	•	600–800 words (suitable for a 4–6 minute spoken monologue)
-	•	Expansion is allowed ONLY by resolving the listed gaps using transcript material
-	•	❌ Do NOT introduce new topics, stories, or advice
+You MUST:
+	•	Resolve ALL gaps
+	•	Use ONLY transcript material
+	•	Adapt structure, tone, and density to the selected platform
 
-If output exceeds limits → CUT
-If output is short → EXPAND ONLY via transcript-grounded gap resolution
+You MUST NOT:
+❌ Add new gaps
+❌ Remove gaps
+❌ Invent examples
+❌ Introduce platform clichés
+❌ Add advice not implied in the transcript
 
 ⸻
 
-2️⃣ SOURCE FIDELITY (CRITICAL)
+🔹 GLOBAL NON-NEGOTIABLE CONSTRAINTS
+
+(Apply to ALL platforms)
+
+1️⃣ SOURCE FIDELITY (ABSOLUTE)
 
 You MAY:
 	•	Rephrase
 	•	Compress
 	•	Reorder
-	•	Add short glue sentences for flow
+	•	Add minimal glue for flow
 
 You MUST:
-	•	Use ONLY ideas, examples, metrics, and stories present in the transcript
-	•	Anchor EVERY gap resolution to transcript material
+	•	Use ONLY transcript ideas, examples, metrics, anecdotes
+	•	Anchor EVERY gap resolution in transcript material
 
 You MUST NOT:
-❌ Invent advice, frameworks, steps, or philosophies
-❌ Add domains not explicitly discussed (branding, legal, fundraising, hiring, networking, etc.)
-❌ Generalize into generic startup or creator advice
-
-If it is not in the transcript or implied by a listed gap → DO NOT ADD IT
+❌ Add frameworks, tools, or steps not mentioned
+❌ Generalize into generic creator advice
+❌ Introduce new domains (branding, hiring, funding, etc.)
 
 ⸻
 
-3️⃣ SINGLE NARRATIVE SPINE (MANDATORY)
+2️⃣ SINGLE NARRATIVE SPINE (MANDATORY)
 	•	Identify ONE core question or premise from the transcript
-(e.g., “If I had to start a company again…”)
-	•	State this spine clearly in the opening
+	•	State it clearly at the start
 	•	Every section must connect back to this spine
-	•	❌ No secondary essays or parallel themes
+	•	❌ No parallel essays or side themes
 
 ⸻
 
-🔹 STRUCTURE (STRICT — HEADINGS REQUIRED)
+CRITICAL CLARIFICATION — NO EXAMPLE COMPLETION
 
-Use clear, descriptive headings.
-Headings must reflect transcript language or gap topics.
-No numbering. No clickbait. No “How to”.
+When resolving gaps, you MUST explain or clarify
+what the speaker already said.
 
-Required Order:
+You MUST NOT:
+- Add concrete examples unless the speaker explicitly gave them
+- Add specific items (e.g., coffee, subscriptions, expenses)
+  unless they appear verbatim or clearly in the transcript
 
-HOOK
-	•	Restate the core spine question
-	•	Explicitly name ALL gaps (briefly, in natural language)
-	•	Explain why these gaps matter to the spine
+If the transcript is abstract, the resolution MUST remain abstract.
+If the transcript lacks examples, do NOT invent illustrative ones.
 
-STORY / JOURNEY
-	•	Reconstruct the speaker’s story from the transcript
-	•	Use concrete events, decisions, mistakes, outcomes
-	•	❌ No abstraction or filler
+You MUST NOT introduce specific examples, items, or categories
+(e.g., coffee, subscriptions, tools, habits, expenses)
+UNLESS they appear explicitly in the transcript.
 
-GAP RESOLUTION SECTIONS (ONE PER GAP, IN ORDER)
-For EACH gap in [GAPS_JSON]:
-	•	Use a heading derived from the gap topic
-	•	Start with:
-	•	an exact quote from the transcript, OR
-	•	a faithful paraphrase if the transcript wording is fragmented
-	•	Clearly expand and resolve the gap using:
-	•	transcript examples
-	•	transcript metrics
-	•	transcript anecdotes
-	•	❌ Do NOT merge gaps
-	•	❌ Do NOT skip gaps
-	•	❌ Do NOT invent missing information
+If the speaker used vague language
+(e.g., “small habits”, “daily spending”, “minor expenses”),
+you MUST preserve that vagueness
+and explain the idea WITHOUT naming examples.
 
-SYNTHESIS
-	•	Explain how these exact gaps connect
-	•	Tie them back to the original spine
-	•	Use transcript examples only
-	•	❌ No new ideas
+🔹 PLATFORM-SPECIFIC EXECUTION RULES
 
-CLOSE + CTA
-	•	Re-list ALL gaps resolved
-	•	Reinforce the core insight
-	•	Give ONE grounded action step implied by the transcript
+(This is the ONLY place platform logic applies)
+
+⸻
+
+▶️ IF [TARGET_PLATFORM] = youtube
+
+Purpose: Spoken monologue for video
+
+MANDATORY FORMAT RULES:
+• Output MUST read as a continuous spoken monologue
+• Add Timestamps (at the start of each paragraph) in the format [00:00] !Important!
+• Paragraphs MUST be 3–5 sentences each
+• Sentences MUST flow naturally across paragraphs
+• Do NOT split sentences into standalone paragraphs
+• Do NOT use atomic or thread-style decomposition
+
+STRICTLY FORBIDDEN FOR YOUTUBE:
+❌ One-sentence paragraphs
+❌ Bullet-style rhythm
+❌ X/Twitter atomic structure
+❌ Essay-style sectioning
+❌ LinkedIn compression rules
+
+DEPTH REQUIREMENT (YOUTUBE ONLY):
+• When resolving gaps, you MAY elaborate using transcript-grounded context
+• Prefer concrete phrasing over compressed abstraction
+• If a sentence sounds like a summary, expand it into lived explanation
+• Spoken clarity > brevity
+
+STRUCTURE (REQUIRED):
+• Hook (spoken, natural)
+• Add Timestamps (at the start of each paragraph) in the format [00:00] !Important!
+• Story / Journey (chronological, narrative)
+• Synthesis
+• Close
+
+STYLE:
+• Conversational
+• First-person
+• Sounds like someone speaking on camera
+• Natural pauses allowed, but not fragmentation
+
+If output reads like a thread or bullet list → REWRITE as spoken monologue.
+
+⸻
+
+📝 IF [TARGET_PLATFORM] = blog
+
+Purpose: Long-form written article
+	•	Tone: Clear, analytical, grounded
+	•	Structure:
+	•	Clear section headers
+	•	Logical progression
+	•	Density:
+	•	Slightly higher than YouTube
+	•	Explicit reasoning allowed
+	•	Formatting:
+	•	Paragraphs 3–5 sentences
+	•	No bullets unless transcript implies enumeration
+	•	❌ No spoken cues
+	•	❌ No “YouTube-style hooks”
+
+  BLOG TERMINATION RULE (STRICT):
+• Do NOT use conclusion phrases:
+  – “In conclusion”
+  – “Ultimately”
+  – “This taught me”
+  – “What I learned”
+• End with a grounded observation, not a summary
+• The final paragraph must advance clarity, not wrap up
+
+BLOG DEPTH RULE:
+• Prefer explicit reasoning over narrative reflection
+• Replace spoken phrasing with written clarity where possible
+
+OUTPUT FORMAT:
+# Main Title
+
+## Subtitle
+[content]
+
+## Subtitle 2
+[content]
+
+Creator bonus: 2min → SEO machine"
+
+⸻
+
+💼 IF [TARGET_PLATFORM] = linkedin
+
+Purpose: Professional insight post / thought leadership
+	•	Tone:
+	•	Reflective
+	•	Credible
+	•	Insight-driven
+	•	Structure:
+	•	Strong opening insight
+	•	Fewer sections
+	•	Focus on implications
+	•	Length:
+	•	~30–50% of YouTube version
+	•	Compress without losing gap coverage
+	•	Style:
+	•	First-person
+	•	Executive clarity
+	•	❌ No emojis
 	•	❌ No motivational clichés
+	•	❌ No hashtags unless transcript implies emphasis
 
 ⸻
 
-🔹 VOICE & STYLE (STRICT)
-	•	First-person only (“I learned…”, “What surprised me was…”)
-	•	Sounds like the original speaker, not an AI
-	•	Founder-to-founder / expert-to-expert
-	•	Concrete > abstract
-	•	Preserve cadence and phrasing patterns
+🧵 IF [TARGET_PLATFORM] = x (FINAL — ATOMIC ENFORCEMENT)
 
-AVOID COMPLETELY:
-❌ Poetic or inspirational language
-❌ LinkedIn essay tone
-❌ Corporate whitepaper voice
-❌ “In conclusion”, “To summarize”, “The key takeaway is”
+Purpose:
+Generate a native Twitter / X insight thread.
+This is NOT a narrative, NOT an essay, NOT an explanatory post.
 
+---
+
+ABSOLUTE FORMAT RULES (NON-NEGOTIABLE)
+
+• Each paragraph = ONE tweet
+• Each tweet = ONE atomic insight
+• Each tweet MUST be:
+  - 1 sentence only
+• No tweet may contain:
+  - explanation
+  - definition
+  - reflection
+  - interpretation
+  - conclusion
+
+If a sentence explains, defines, or interprets another idea → DELETE or SPLIT.
+
+---
+
+ATOMIC INSIGHT DEFINITION (STRICT)
+
+An atomic insight:
+• States ONE observation, action, or claim
+• Does NOT explain why it matters
+• Does NOT describe impact or transformation
+• Does NOT interpret meaning
+
+Allowed:
+✔ “I started tracking small daily expenses.”
+✔ “Those expenses added up faster than I expected.”
+
+Forbidden:
+❌ “This showed me why tracking matters.”
+❌ “Which changed how I thought about money.”
+
+---
+
+MANDATORY SPLIT RULE
+
+If ANY sentence includes:
+• cause + effect
+• action + outcome
+• behavior + meaning
+• insight + implication
+
+→ SPLIT INTO SEPARATE TWEETS
+
+No exceptions.
+
+---
+
+LANGUAGE HARD BANS (DELETE IF GENERATED)
+
+The following phrases or patterns MUST NOT appear:
+
+• “This taught me…”
+• “I learned that…”
+• “It helped me…”
+• “Which meant…”
+• “This shift…”
+• “Ultimately…”
+• “In summary…”
+• “This transformed…”
+
+---
+
+STRUCTURE (THREAD LOGIC)
+
+• Opening tweet:
+  One declarative insight tied to the transcript spine
+
+• Middle tweets:
+  Sequential atomic insights resolving gaps
+  (compressed, factual, non-reflective)
+
+• Final tweet:
+  A standalone factual insight
+  ❌ Not a takeaway
+  ❌ Not reflective
+  ❌ Not a conclusion
+
+---
+
+STYLE RULES
+
+• Declarative
+• Factual
+• Minimal adjectives
+• No narrative flow
+• No emotional framing
+
+Each tweet should feel like it could stand alone in the feed.
+
+---
+
+STRICTLY FORBIDDEN
+
+• Multi-sentence tweets
+• Definitions
+• Explanations
+• Reflections
+• Wrap-ups
+• Emojis
+• Hashtags
+• “🧵 THREAD” labels
+• Meta commentary
+
+---
+
+FINAL VALIDATION (MUST PASS)
+
+Before output:
+• Every tweet is 1 sentence
+• No tweet explains another
+• No reflective or interpretive language
+• Output reads as native X insights
+
+---
+
+OUTPUT RULE (ABSOLUTE)
+
+Return ONLY the X thread.
+Plain text.
+Paragraph-separated.
+No analysis.
+No explanations.
+No meta text.
 ⸻
 
-🔹 PARAGRAPH & READABILITY RULES
-	•	Paragraphs: 3–5 sentences max
-	•	Spoken-language flow (recordable as 10–15 min video)
-	•	Dense, valuable, no padding
+🔹 STRUCTURE REQUIREMENTS (ADAPTIVE)
+
+You MUST include:
+	•	A clear opening tied to the spine
+	•	One section per gap (may be compressed depending on platform)
+	•	A synthesis tying gaps together
+	•	A grounded close (NO motivational CTA unless transcript implies it)
+
+Headings:
+	•	Required for YouTube / Blog
+	•	Optional for LinkedIn
+	•	❌ Not used for X (use paragraph breaks instead)
 
 ⸻
 
 🔹 METRICS & SPECIFICS
-	•	If numbers appear in the transcript, quote them exactly
-	•	Do NOT round, estimate, or modify figures
-
-⸻
-
-🔹 OPTIONAL YOUTUBE VISUAL CUES (LIGHT)
-
-You MAY add occasional cues like:
-	•	[Pause for emphasis]
-	•	[Cut to B-roll]
-	•	[Show graphic: workflow]
-	•	[On-screen text: metric]
-
-Do NOT overuse.
+	•	Quote numbers EXACTLY as stated
+	•	Do NOT round or estimate
+	•	If transcript lacks numbers → do not invent
 
 ⸻
 
 🔹 QUALITY GATE (INTERNAL — DO NOT OUTPUT)
 
 Before responding, verify:
-	•	□ Every gap has its own section
-	•	□ Each gap is grounded in transcript material
-	•	□ Length constraints are met
-	•	□ One narrative spine throughout
-	•	□ No new domains introduced
-	•	□ Sounds human, not AI-generated
+	•	□ Every gap is resolved
+	•	□ No new topics introduced
+	•	□ Platform rules strictly followed
+	•	□ Transcript remains the sole source of truth
+	•	□ Output matches platform expectations
 
 ⸻
 
 🔹 OUTPUT RULE (ABSOLUTE)
 
-Return ONLY the final monologue script.
+Return ONLY the final derivative script.
+	•	Plain text
+	•	No analysis
+	•	No explanations
+	•	No meta commentary
+`;
 
-Plain text.
-With headings.
-No analysis.
-No explanations.
-No meta commentary.
-`
+      // Interpolate larger text blocks
+      // Note: We use the original 'transcript' variable and 'gaps' array (converted to JSON)
+      const finalSystemPrompt = systemPrompt
+        .replace("[TRANSCRIPT]", transcript)
+        .replace("[GAPS_JSON]", JSON.stringify(gaps, null, 2));
+
+      const monologueResp = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: finalSystemPrompt
           },
           {
             role: "user",
-            content: finalScript
+            content: "Generate the derivative script now."
           }
         ],
-        temperature: 0.15,
-        max_tokens: 2200
+        temperature: 0.15, // Low temp for fidelity
+        max_tokens: 4000
       });
 
       renderedScript = monologueResp.choices[0].message.content.trim();

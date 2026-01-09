@@ -391,10 +391,17 @@ export default function AnalysisView() {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                           </svg>
                         </div>
-                        Derivative Script (Optional)
-                        <span className="text-xs font-medium text-slate-500 bg-white/5 px-2 py-1 rounded-md border border-white/5 ml-2">
-                          {(isEditing ? editableScript.length : (scriptContent || "").length).toLocaleString()} chars
-                        </span>
+                        <div className="flex items-center gap-3">
+                          Derivative Script (Optional)
+                          {analysis.metadata?.content_target && (
+                            <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border bg-purple-500/10 text-purple-400 border-purple-500/20 flex items-center gap-1">
+                              <span className="opacity-50">FOR</span> {analysis.metadata.content_target}
+                            </span>
+                          )}
+                          <span className="text-xs font-medium text-slate-500 bg-white/5 px-2 py-1 rounded-md border border-white/5">
+                            {(isEditing ? editableScript.length : (scriptContent || "").length).toLocaleString()} chars
+                          </span>
+                        </div>
                       </h2>
                       <div className="flex items-center gap-2">
                         {saveSuccess && <span className="text-green-400 text-sm font-medium animate-pulse">Saved!</span>}
