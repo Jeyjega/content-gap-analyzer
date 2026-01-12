@@ -31,8 +31,11 @@ export default function Footer({ isDark = true }) {
                                 GapGens
                             </span>
                         </Link>
-                        <p className={`text-sm ${textSecondary} leading-relaxed max-w-xs`}>
+                        <p className={`text-sm ${textSecondary} leading-relaxed max-w-xs mb-4`}>
                             GapGens is an AI content analysis platform that identifies content gaps and generates transcript-grounded scripts for creators, educators, and strategists.
+                        </p>
+                        <p className={`text-xs ${textSecondary} font-medium`}>
+                            Platform-aware derivative scripts for YouTube, Blogs, LinkedIn, and X.
                         </p>
                     </div>
 

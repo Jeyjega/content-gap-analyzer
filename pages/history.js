@@ -9,27 +9,26 @@ import { supabase } from "@/lib/supabaseClient";
 
 function formatCreated(createdRaw) {
   if (!createdRaw) return "—";
-  const d = new Date(createdRaw);
+
+  // Treat backend timestamps as UTC. If missing 'Z' or offset, append 'Z'.
+  let dateStr = createdRaw;
+  if (typeof dateStr === 'string' && !dateStr.endsWith('Z') && !dateStr.includes('+')) {
+    dateStr += 'Z';
+  }
+
+  const d = new Date(dateStr);
   if (Number.isNaN(d.getTime())) return String(createdRaw);
 
-  return new Intl.DateTimeFormat('en-US', {
+  return new Intl.DateTimeFormat(undefined, {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
     hour: 'numeric',
     minute: 'numeric',
-    hour12: true
   }).format(d);
 }
 
-function safeStringify(obj, max = 500) {
-  try {
-    const s = JSON.stringify(obj, null, 2);
-    return s.length > max ? s.slice(0, max) + "…" : s;
-  } catch (e) {
-    return String(obj);
-  }
-}
+
 
 
 export default function HistoryPage() {
@@ -232,7 +231,7 @@ export default function HistoryPage() {
 
                     const createdFormatted = formatCreated(analysis?.created_at ?? analysis?.created ?? analysis?.createdAt);
                     const key = analysis?.id ?? `${analysis?.video_id ?? "no-video"}-${idx}`;
-                    const tooltip = safeStringify(analysis, 800);
+
                     const { type, video_id, video_url } = analysis;
 
                     // Inference logic for missing/incorrect type
@@ -271,7 +270,7 @@ export default function HistoryPage() {
                         onClick={() => router.push(`/analysis/${analysis.id}`)}
                         className="group hover:bg-white/5 transition-colors cursor-pointer border-b border-white/5 last:border-none"
                       >
-                        <td className="px-6 py-6" title={tooltip}>
+                        <td className="px-6 py-6" title={videoTitle}>
                           <div className="flex items-center gap-4">
                             <ContentIcon type={inferredType} videoId={video_id} />
                             <div>

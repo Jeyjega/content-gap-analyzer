@@ -690,23 +690,62 @@ Creator bonus: 2min → SEO machine"
 💼 IF [TARGET_PLATFORM] = linkedin
 
 Purpose: Professional insight post / thought leadership
-	•	Tone:
-	•	Reflective
-	•	Credible
-	•	Insight-driven
-	•	Structure:
-	•	Strong opening insight
-	•	Fewer sections
-	•	Focus on implications
-	•	Length:
-	•	~30–50% of YouTube version
-	•	Compress without losing gap coverage
-	•	Style:
-	•	First-person
-	•	Executive clarity
-	•	❌ No emojis
-	•	❌ No motivational clichés
-	•	❌ No hashtags unless transcript implies emphasis
+
+Tone:
+• Reflective
+• Credible  
+• Insight-driven
+
+Structure:
+• Lines 1-5: Strong opening insight (130 chars max, 'see more' ready)
+• Short paragraphs (2-3 sentences, 2 line breaks between)
+• 3 bullets covering gaps (no emoji markers)
+• 1 bold question at end
+• Fewer sections, focus on implications
+
+Length:
+• 200-280 words (~30–50% of YouTube version)
+• Compress without losing gap coverage
+
+FORMATING: 
+   - 2 line breaks (Enter Enter) between sections
+   - **Bold headers** using **text** syntax  
+   - Bullets start at line start (no indent)
+   - Question on new line after bullets
+
+LINE BREAKS:
+   - After opening insight (line 4)
+   - Before bullet section  
+   - After bullets, before question
+
+
+Style:
+• First-person
+• Executive clarity
+• ❌ No emojis
+• ❌ No motivational clichés  
+• ❌ No hashtags (remove all)
+
+**EXACT COPY-PASTE FORMAT:**
+
+When I first [OPENING INSIGHT - 1 line]
+
+[PAIN/GAP OBSERVATION - 1 line]
+
+**Key realizations from tracking:**
+
+• [GAP 1 filled - method detail]
+• [GAP 2 filled - pattern insight] 
+• [GAP 3 filled - intentionality shift]
+
+**Solo creators: What's your biggest content bottleneck?**
+
+REQUIREMENTS:
+• First 5 lines = 130 chars max (standalone value)
+• Exactly 3 bullets (plain bullets •)
+• Bold question ending (**text** format)
+• 2 line breaks between sections
+• Zero editing needed for LinkedIn pasteons
 
 ⸻
 
@@ -920,9 +959,20 @@ Return ONLY the final derivative script.
       suggested_script: renderedScript
     };
 
+    const updatePayload = { generated_script: JSON.stringify(finalPayload) };
+
+    // If regenerating with a new target, update the metadata too
+    if (regenerateScript && req.body.targetPlatform) {
+      const updatedMetadata = {
+        ...analysis.metadata,
+        content_target: req.body.targetPlatform
+      };
+      updatePayload.metadata = updatedMetadata;
+    }
+
     await supabase
       .from("analyses")
-      .update({ generated_script: JSON.stringify(finalPayload) })
+      .update(updatePayload)
       .eq("id", aId);
 
     // Emit Final Event

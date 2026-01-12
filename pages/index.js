@@ -46,12 +46,17 @@ export default function Home() {
           <h1 className="font-display text-4xl md:text-5xl lg:text-7xl font-bold tracking-tight text-white mb-6 max-w-4xl leading-[1.1] animate-slide-up">
             Turn Existing Content into <br />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-300 via-white to-indigo-300">
-              Clear, High-Impact Scripts
+              Platform-Ready, High-Impact Scripts
             </span>
           </h1>
 
+          <p className="font-display text-xl md:text-2xl font-medium text-white mb-6 tracking-tight animate-slide-up" style={{ animationDelay: '0.05s' }}>
+            1 script → YouTube + Blog + LinkedIn + Twitter
+          </p>
+
           <p className="text-lg md:text-xl text-slate-400 max-w-2xl mb-10 leading-relaxed animate-slide-up font-light" style={{ animationDelay: '0.1s' }}>
-            Paste a YouTube video, blog, or script. GapGens finds what’s missing and gives you a stronger version, ready to record or publish.
+            Analyze once. Adapt everywhere.<br className="hidden md:block" />
+            GapGens identifies what your content is missing — then generates transcript-grounded scripts tailored for YouTube, Blogs, LinkedIn, or X.
           </p>
 
           <div className="flex flex-col sm:flex-row gap-5 w-full justify-center animate-slide-up" style={{ animationDelay: '0.2s' }}>
@@ -66,6 +71,19 @@ export default function Home() {
               </Button>
             </Link>
           </div>
+
+          <div className="mt-8 flex items-center justify-center gap-2 animate-fade-in" style={{ animationDelay: '0.3s' }}>
+            <div className="flex -space-x-2">
+              <div className="w-6 h-6 rounded-full bg-indigo-500 border-2 border-[#030014]"></div>
+              <div className="w-6 h-6 rounded-full bg-violet-500 border-2 border-[#030014]"></div>
+              <div className="w-6 h-6 rounded-full bg-white border-2 border-[#030014]"></div>
+            </div>
+            <span className="text-sm font-medium text-white">50+ creators generating daily</span>
+          </div>
+
+          <p className="mt-4 text-xs text-slate-500 font-medium tracking-wide animate-fade-in" style={{ animationDelay: '0.4s' }}>
+            No hallucinations. Transcript-grounded. Platform-aware.
+          </p>
 
           {/* Hero Visual: Transcript -> Gaps -> Script */}
           {/* Hero Visual: Video Demo */}
@@ -90,6 +108,63 @@ export default function Home() {
         </div>
       </section>
 
+      {/* 1.5. FEATURE PREVIEW SECTION */}
+      <section className="py-20 bg-[#030014] border-t border-white/5 relative z-20">
+        <ScrollReveal>
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="rounded-3xl bg-gradient-to-br from-indigo-900/20 to-violet-900/10 border border-indigo-500/20 p-8 md:p-12 flex flex-col md:flex-row items-center gap-10 md:gap-16">
+
+              {/* Text Side */}
+              <div className="flex-1 text-center md:text-left">
+                <h2 className="text-2xl md:text-3xl font-display font-bold text-white mb-6">
+                  One Analysis. Multiple Platforms.
+                </h2>
+                <ul className="space-y-4 mb-8">
+                  <li className="flex items-start gap-3 text-slate-300">
+                    <span className="w-6 h-6 rounded-full bg-indigo-500/20 flex items-center justify-center text-indigo-400 flex-shrink-0 mt-0.5">✓</span>
+                    <span>Analyze your content once</span>
+                  </li>
+                  <li className="flex items-start gap-3 text-slate-300">
+                    <span className="w-6 h-6 rounded-full bg-indigo-500/20 flex items-center justify-center text-indigo-400 flex-shrink-0 mt-0.5">✓</span>
+                    <span>Choose where you’ll publish: <strong>YouTube, Blog, LinkedIn, or X</strong></span>
+                  </li>
+                  <li className="flex items-start gap-3 text-slate-300">
+                    <span className="w-6 h-6 rounded-full bg-indigo-500/20 flex items-center justify-center text-indigo-400 flex-shrink-0 mt-0.5">✓</span>
+                    <span>Instantly regenerate scripts per platform — no re-analysis required</span>
+                  </li>
+                </ul>
+                <div className="inline-block px-4 py-2 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-sm font-medium">
+                  Same insights. Different delivery.
+                </div>
+              </div>
+
+              {/* Visual Side (Mockup) */}
+              <div className="flex-1 w-full max-w-sm">
+                <div className="grid grid-cols-2 gap-3 p-4 rounded-xl bg-[#0b0c15] border border-white/10 shadow-2xl skew-y-[-2deg] hover:skew-y-0 transition-transform duration-500">
+                  <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20 flex flex-col items-center gap-2">
+                    <div className="w-8 h-8 rounded bg-red-500 flex items-center justify-center text-white text-xs font-bold">YT</div>
+                    <div className="h-1.5 w-12 bg-white/10 rounded-full"></div>
+                  </div>
+                  <div className="p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex flex-col items-center gap-2">
+                    <div className="w-8 h-8 rounded bg-emerald-500 flex items-center justify-center text-white text-xs font-bold">Web</div>
+                    <div className="h-1.5 w-12 bg-white/10 rounded-full"></div>
+                  </div>
+                  <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-500/20 flex flex-col items-center gap-2">
+                    <div className="w-8 h-8 rounded bg-blue-500 flex items-center justify-center text-white text-xs font-bold">in</div>
+                    <div className="h-1.5 w-12 bg-white/10 rounded-full"></div>
+                  </div>
+                  <div className="p-4 rounded-lg bg-slate-500/10 border border-slate-500/20 flex flex-col items-center gap-2">
+                    <div className="w-8 h-8 rounded bg-slate-500 flex items-center justify-center text-white text-xs font-bold">X</div>
+                    <div className="h-1.5 w-12 bg-white/10 rounded-full"></div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </ScrollReveal>
+      </section>
+
       {/* 2. WHO GAPGENS IS FOR */}
       <section className="py-24 bg-[#05051a] border-y border-white/5">
         <ScrollReveal>
@@ -99,25 +174,25 @@ export default function Home() {
                 icon="🎥"
                 title="Creators & Podcasters"
                 problem="Struggling to turn long videos into more content?"
-                solution="Turn one video into 5 high-quality scripts instantly."
+                solution="Turn long-form audio or video into platform-specific scripts — without rewriting from scratch."
               />
               <WhoForCard
                 icon="🧠"
                 title="Founders & Leaders"
                 problem="Have great ideas but no time to structure them?"
-                solution="Transform your rambling voice notes into structured articles."
+                solution="Adapt one idea into YouTube talks, LinkedIn posts, or insight threads."
               />
               <WhoForCard
                 icon="📚"
                 title="Educators"
                 problem="Need to update course material quickly?"
-                solution="Find gaps in old lectures and refresh them with new data."
+                solution="Preserve accuracy while reshaping explanations for different audiences."
               />
               <WhoForCard
                 icon="✍️"
                 title="Writers"
                 problem="Boring blank page syndrome?"
-                solution="Start with a deep analysis, never from scratch."
+                solution="Extract deeper structure, then repurpose it cleanly across formats."
               />
             </div>
           </div>
@@ -136,6 +211,7 @@ export default function Home() {
               <div className="p-8 rounded-2xl bg-white/5 border border-white/5 flex flex-col items-center">
                 <span className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4">Most AI Tools</span>
                 <p className="text-lg text-slate-400 mb-2">"Write me a viral post about X"</p>
+                <p className="text-sm text-slate-500 mt-2 italic">Write content from prompts.</p>
                 <div className="w-8 h-px bg-slate-700 my-4"></div>
                 <p className="text-red-400 font-medium text-sm">🚫 Generic, Hallucinated, Fluff</p>
               </div>
@@ -143,13 +219,14 @@ export default function Home() {
               <div className="p-8 rounded-2xl bg-indigo-900/10 border border-indigo-500/20 flex flex-col items-center shadow-2xl shadow-indigo-500/5">
                 <span className="text-sm font-bold text-indigo-400 uppercase tracking-wider mb-4">GapGens</span>
                 <p className="text-lg text-white mb-2">"Here is my content. Evolve it."</p>
+                <p className="text-sm text-indigo-300/80 mt-2 italic text-center">Analyze actual content, find what’s missing, adapt per platform — without changing truth.</p>
                 <div className="w-8 h-px bg-indigo-500/50 my-4"></div>
                 <p className="text-indigo-300 font-medium text-sm">✅ Grounded, Deep, Human</p>
               </div>
             </div>
 
             <p className="mt-10 text-slate-400 text-lg">
-              Most AI tools write new content. <span className="text-white font-medium">GapGens evolves your existing content.</span>
+              Same analysis. Multiple outputs. Zero hallucinations. <span className="text-white font-medium">GapGens evolves your existing content.</span>
             </p>
           </div>
         </ScrollReveal>
@@ -168,18 +245,18 @@ export default function Home() {
               <StepCard
                 number="1"
                 title="Add Your Content"
-                desc="Paste a YouTube URL. (Text & Blog support coming soon)."
+                desc="Paste a YouTube URL, Blog post, or raw text."
               />
               <StepCard
                 number="2"
                 title="Gap Analysis"
-                desc="AI identifies missing depth, underexplained ideas, and skipped reasoning."
+                desc="GapGens identifies missing explanations, assumptions, and under-developed ideas — grounded strictly in your transcript."
                 highlight
               />
               <StepCard
                 number="3"
-                title="Derivative Script"
-                desc="Get a grounded, structured script that resolves every gap found."
+                title="Platform-Specific Derivative Scripts"
+                desc="Generate and regenerate scripts tailored for YouTube, Blogs, LinkedIn, or X — without re-analyzing your content."
               />
             </div>
           </div>
@@ -207,6 +284,10 @@ export default function Home() {
               <FeatureCard
                 title="Interview → Monologue"
                 desc="Convert messy interviews into clean, single-speaker narratives."
+              />
+              <FeatureCard
+                title="Platform-Aware Regeneration"
+                desc="Regenerate derivative scripts per platform using the same transcript and gaps — no repeated analysis."
               />
               <FeatureCard
                 title="No Hallucinations"
@@ -252,7 +333,10 @@ export default function Home() {
 
         <ScrollReveal>
           <div className="relative max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-            <h2 className="font-display text-4xl md:text-5xl font-bold text-white mb-8 tracking-tight">Ready to improve the content you already have?</h2>
+            <h2 className="font-display text-4xl md:text-5xl font-bold text-white mb-8 tracking-tight">Analyze Once. Publish Everywhere.</h2>
+            <p className="text-lg text-slate-400 mb-8 max-w-2xl mx-auto">
+              Generate YouTube scripts, blog posts, LinkedIn insights, or X threads — all grounded in the same analysis.
+            </p>
             <div className="flex flex-col sm:flex-row gap-5 justify-center mt-10">
               <Link href="/dashboard">
                 <Button variant="white" size="xl" className="shadow-2xl shadow-indigo-500/20 bg-white text-slate-900 hover:bg-indigo-50 transition-all font-bold px-10 py-4 text-lg">
@@ -269,7 +353,7 @@ export default function Home() {
           </div>
         </ScrollReveal>
       </section>
-    </Layout>
+    </Layout >
   );
 }
 
