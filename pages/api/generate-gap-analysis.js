@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { openai } from "../../lib/openaiServer";
+import { checkEntitlement, incrementUsage, ensureFreemiumRecord } from "../../lib/entitlements";
 
 export default async function handler(req, res) {
   const formatMode = req.body.formatMode || "interview";
@@ -29,10 +30,34 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
+    // Ensure Freemium Row
+    await ensureFreemiumRecord(user.id);
+
     const aId = req.body.analysisId || req.body.analysis_id;
     if (!aId) {
       return res.status(400).json({ error: "Missing analysisId" });
     }
+
+    /* -------------------------------------------
+       FREEMIUM ENTITLEMENT CHECK
+    ------------------------------------------- */
+    // Determine target platform for derivative checks
+    // If interview mode, we only check global analysis limits (platform = null/undefined)
+    // If monologue mode, we check specific platform limits
+    let targetPlatformForCheck = null;
+    if (formatMode === "monologue") {
+      // We need to resolve metadata to fallback to 'youtube' if not provided in body, 
+      // but we haven't loaded analysis yet. 
+      // Logic: Try body first. If missing, we defer deep check or load analysis early?
+      // Let's load analysis first (it's cheap) OR just check body if typically provided.
+      // req.body.targetPlatform is usually passed from UI for derivatives.
+      targetPlatformForCheck = req.body.targetPlatform;
+    }
+
+    // However, we need to load analysis to get metadata if body is missing it, 
+    // AND to trust the source of truth. 
+    // But checking entitlement BEFORE DB load saves DB ops?
+    // DB load is fast. Let's load analysis first to be robust, THEN check entitlement.
 
     /* -------------------------------------------
        LOAD ANALYSIS
@@ -42,6 +67,44 @@ export default async function handler(req, res) {
       .select("*")
       .eq("id", aId)
       .single();
+
+    if (!analysis) {
+      return res.status(404).json({ error: "Analysis not found" });
+    }
+
+    // Refine targetPlatform logic now that we have metadata
+    if (formatMode === "monologue") {
+      targetPlatformForCheck = req.body.targetPlatform || analysis.metadata?.content_target || "youtube";
+    }
+
+    // PERFORM CHECK
+    const { allowed, error: entitlementError } = await checkEntitlement(user.id, targetPlatformForCheck);
+
+    if (!allowed) {
+      console.warn(`Entitlement blocked for user ${user.id}: ${entitlementError}`);
+      return res.status(403).json({ error: entitlementError, upgrade: true });
+    }
+
+    // TRACK USAGE IF REGENERATING WITH PLATFORM CHANGE (Freemium Fix)
+    const currentPlatform = analysis.metadata?.content_target || "youtube";
+    // Check if this is a platform switch regeneration
+    // only relevant if regenerateScript is true (handled later in code, but we know intent here from body)
+    // Actually we need to check regenerateScript flag here effectively.
+    // But local flag 'regenerateScript' is defined lower down. Let's pull it up or check req.body directly.
+    if (req.body.regenerateScript && targetPlatformForCheck !== currentPlatform) {
+      console.log(`[Freemium] Platform switch detected: ${currentPlatform} -> ${targetPlatformForCheck}`);
+
+      // 1. Increment Counters
+      await incrementUsage(user.id, "analysis");
+      if (targetPlatformForCheck === "youtube") {
+        await incrementUsage(user.id, "youtube_derivative");
+      }
+
+      // 2. Update Metadata to prevent double-counting on subsequent identical regenerations
+      // We only update content_target, preserving other metadata
+      const newMetadata = { ...analysis.metadata, content_target: targetPlatformForCheck };
+      await supabase.from("analyses").update({ metadata: newMetadata }).eq("id", aId);
+    }
 
     const transcript = analysis?.transcript || "";
     const preserveInterviewMode = formatMode === "interview";
@@ -974,6 +1037,11 @@ Return ONLY the final derivative script.
       .from("analyses")
       .update(updatePayload)
       .eq("id", aId);
+
+    // Increment usage for Freemium YouTube limit
+    if (formatMode === "monologue" && targetPlatformForCheck === "youtube") {
+      await incrementUsage(user.id, "youtube_derivative");
+    }
 
     // Emit Final Event
     res.write(JSON.stringify({ status: "script_ready", script: renderedScript }) + "\n");

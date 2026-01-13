@@ -1,5 +1,6 @@
 // pages/api/create-analysis.js
 import { createClient } from "@supabase/supabase-js";
+import { incrementUsage, ensureFreemiumRecord } from "../../lib/entitlements";
 
 function pickNiceTitle({ providedTitle, videoId, metadata, transcript }) {
   if (providedTitle && String(providedTitle).trim()) return String(providedTitle).trim();
@@ -37,6 +38,10 @@ export default async function handler(req, res) {
     if (authError || !user) {
       return res.status(401).json({ error: "Unauthorized" });
     }
+
+    // 4. Ensure Freemium Usage Row Exists
+    await ensureFreemiumRecord(user.id);
+
 
     const {
       title,
@@ -107,13 +112,16 @@ export default async function handler(req, res) {
       });
     }
 
+    // Increment usage stats for Freemium enforcement
+    await incrementUsage(user.id, 'analysis');
+
     return res.status(200).json({ analysisId: data.id, analysis: data, is_interview: isInterview });
 
   } catch (err) {
     console.error("create-analysis unexpected error:", err);
     return res.status(500).json({
       error: "Server error",
-      details: String(err)
+      details: err instanceof Error ? err.message : err
     });
   }
 }

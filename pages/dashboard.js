@@ -5,7 +5,10 @@ import Link from "next/link";
 import Layout from "../components/Layout";
 import Button from "../components/Button";
 import Card from "../components/Card";
+import Tooltip from "../components/Tooltip";
+import LimitAlert from "../components/LimitAlert";
 import AnalysisLoader from "../components/AnalysisLoader";
+import { supabase } from "../lib/supabaseClient";
 import { chunkText as chunkTextFromLib } from "../lib/chunkText";
 
 // Fallback chunkText implementation
@@ -34,6 +37,46 @@ const chunkText =
     return chunks;
   });
 
+// Extract JSON error if wrapped in "Analysis failed: " or similar text
+const parseError = (err) => {
+  let msg = err.message || String(err);
+  if (!msg) return { message: "Unknown error" };
+
+  try {
+    // 1. Try straightforward JSON parse
+    let parsed = JSON.parse(msg);
+    if (parsed && parsed.error) {
+      return { message: parsed.error, upgrade: !!parsed.upgrade };
+    }
+  } catch (e1) {
+    // 2. Try to find JSON object substring { ... }
+    const firstParen = msg.indexOf("{");
+    const lastParen = msg.lastIndexOf("}");
+
+    if (firstParen !== -1 && lastParen > firstParen) {
+      const potentialJson = msg.substring(firstParen, lastParen + 1);
+      try {
+        let parsed = JSON.parse(potentialJson);
+        if (parsed && parsed.error) {
+          return { message: parsed.error, upgrade: !!parsed.upgrade };
+        }
+      } catch (e2) {
+        // ignore
+      }
+    }
+  }
+
+  // fallback: strip prefixes
+  const prefixes = ["Analysis failed: ", "Regenerate failed: ", "create-analysis failed: "];
+  for (let p of prefixes) {
+    if (msg.startsWith(p)) {
+      msg = msg.replace(p, "");
+    }
+  }
+
+  return { message: msg };
+};
+
 export default function Dashboard() {
   const { user, session, loading } = useAuth();
   const router = useRouter();
@@ -44,6 +87,11 @@ export default function Dashboard() {
       router.push('/login');
     }
   }, [user, loading, router]);
+
+  const [usage, setUsage] = useState({ analyses: 0, youtube: 0 });
+  const [userPlan, setUserPlan] = useState("free");
+
+
 
   const [mode, setMode] = useState("youtube"); // youtube | blog | text
   const [videoUrlOrId, setVideoUrlOrId] = useState("");
@@ -69,6 +117,48 @@ export default function Dashboard() {
     "This usually takes under a minute.",
     "Almost there — final polish in progress."
   ];
+
+  // Fetch usage and plan
+  useEffect(() => {
+    if (!user) return;
+
+    async function fetchEntitlements() {
+      // 1. Get Plan
+      const { data: sub } = await supabase
+        .from("subscriptions")
+        .select("plan, status")
+        .eq("user_id", user.id)
+        .in("status", ["active", "trialing"])
+        .maybeSingle();
+
+      const plan = sub?.plan?.toLowerCase() || "free";
+      setUserPlan(plan);
+
+      // 2. Get Usage
+      const { data: usageData } = await supabase
+        .from("freemium_usage")
+        .select("analyses_used, youtube_derivatives_used, reset_at")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      // Reset logic handling on client side for display accuracy (server handles actual reset)
+      let analysesUsed = usageData?.analyses_used || 0;
+      let youtubeUsed = usageData?.youtube_derivatives_used || 0;
+      const resetAt = usageData?.reset_at ? new Date(usageData.reset_at) : new Date(0);
+
+      if (new Date() >= resetAt) {
+        analysesUsed = 0;
+        youtubeUsed = 0;
+      }
+
+      setUsage({
+        analyses: analysesUsed,
+        youtube: youtubeUsed
+      });
+    }
+
+    fetchEntitlements();
+  }, [user, analysisResult, generatedScript]); // Refresh when analysis completes
 
   // Rotate helper messages
   useEffect(() => {
@@ -258,8 +348,9 @@ export default function Dashboard() {
     } catch (err) {
       console.error("resumeAnalysis error", err);
       setStatus("error");
-      setError(err.message || String(err));
-      log(`Error: ${err.message || String(err)}`);
+      const errorObj = parseError(err);
+      setError(errorObj);
+      log(`Error: ${errorObj.message}`);
     }
   };
 
@@ -347,14 +438,28 @@ export default function Dashboard() {
 
     } catch (err) {
       console.error("Regeneration error", err);
-      setError(err.message);
-      setStatus("done"); // Reset to done so UI recovers
+      const errorObj = parseError(err);
+      setError(errorObj);
+      setStatus("done");
+      // Auto-scroll to top so user isn't stuck at bottom with an error
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
   const handleAnalyze = async () => {
+    const isLimitReached = userPlan === "free" && usage.analyses >= 3;
+
     if (!session?.access_token) {
       setError("User session invalid. Please log in again.");
+      return;
+    }
+
+    if (isLimitReached) {
+      // Double check to update error UI just in case
+      setError({
+        message: "You’ve used all 3 free analyses this month. Upgrade to unlock unlimited access.",
+        upgrade: true
+      });
       return;
     }
     const token = session.access_token;
@@ -576,18 +681,21 @@ export default function Dashboard() {
         return;
       }
 
-      // 5) Call generate-gap-analysis (Default Monologue if not interview)
-      // Reuse streaming orchestration for ALL content (interview + non-interview)
-      setPendingAnalysisId(newAnalysisId);
-      resumeAnalysisWithFormat("monologue", newAnalysisId);
-      return;
+      // 5) Resume flow immediately if not interview
+      log("Not interview, auto-resuming with 'monologue' format");
+      await resumeAnalysisWithFormat("monologue", newAnalysisId);
+
     } catch (err) {
       console.error("handleAnalyze error", err);
       setStatus("error");
-      setError(err.message || String(err));
-      log(`Error: ${err.message || String(err)}`);
+      const errorObj = parseError(err);
+      setError(errorObj);
+      log(`Error: ${errorObj.message}`);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
+
+
 
   const isBusy = ["transcribing", "fetching-web", "creating-analysis", "creating-embeddings", "generating-analysis", "regenerating"].includes(status);
 
@@ -771,54 +879,99 @@ export default function Dashboard() {
                       ].map((platform) => {
                         const isActive = contentTarget === platform.id;
                         return (
-                          <button
-                            key={platform.id}
-                            onClick={() => setContentTarget(platform.id)}
-                            className={`relative flex flex-col justify-center items-start px-3 py-2 rounded-xl border transition-all duration-200 w-full h-[72px] ${isActive
-                              ? "bg-purple-600/10 border-2 border-purple-500 shadow-[0_0_15px_rgba(147,51,234,0.15)] scale-105 z-10"
-                              : "bg-white/5 border border-white/5 hover:bg-white/10 hover:border-white/10 hover:-translate-y-0.5"
-                              }`}
-                          >
-                            <div className="flex items-center gap-2 mb-1">
-                              <div className={`p-1 rounded ${isActive ? "bg-purple-600 text-white" : "bg-white/5 text-slate-400 group-hover:text-slate-300"
-                                }`}>
-                                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-                                  <path d={platform.icon} />
-                                </svg>
-                              </div>
-                              <span className={`text-xs font-semibold whitespace-nowrap ${isActive ? "text-white" : "text-slate-300"
-                                }`}>
-                                {platform.label}
-                              </span>
-                            </div>
-                            <span className={`block text-[10px] pl-0.5 truncate w-full text-left ${isActive ? "text-purple-200" : "text-slate-500"
-                              }`}>
-                              {platform.sub}
-                            </span>
-                          </button>
+
+                          <div key={platform.id} className="w-full h-full relative">
+                            <Tooltip content={platform.id === 'blog' && userPlan === 'free' ? "Available on Standard & Pro" : ""}>
+                              <button
+                                onClick={() => {
+                                  if (platform.id === 'blog' && userPlan === 'free') return;
+                                  setContentTarget(platform.id)
+                                }}
+                                className={`relative flex flex-col justify-center items-start px-3 py-2 rounded-xl border transition-all duration-200 w-full h-[72px] ${platform.id === 'blog' && userPlan === 'free'
+                                  ? "opacity-40 cursor-not-allowed bg-white/5 border-white/5 grayscale"
+                                  : isActive
+                                    ? "bg-purple-600/10 border-2 border-purple-500 shadow-[0_0_15px_rgba(147,51,234,0.15)] scale-105 z-10"
+                                    : "bg-white/5 border border-white/5 hover:bg-white/10 hover:border-white/10 hover:-translate-y-0.5"
+                                  }`}
+                              >
+                                <div className="flex items-center gap-2 mb-1">
+                                  <div className={`p-1 rounded ${platform.id === 'blog' && userPlan === 'free' ? "bg-white/10 text-slate-500" :
+                                    isActive ? "bg-purple-600 text-white" : "bg-white/5 text-slate-400 group-hover:text-slate-300"
+                                    }`}>
+                                    <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                                      <path d={platform.icon} />
+                                    </svg>
+                                  </div>
+                                  <span className={`text-xs font-semibold whitespace-nowrap ${platform.id === 'blog' && userPlan === 'free' ? "text-slate-500" :
+                                    isActive ? "text-white" : "text-slate-300"
+                                    }`}>
+                                    {platform.label} {platform.id === 'blog' && userPlan === 'free' && "🔒"}
+                                  </span>
+                                </div>
+                                <span className={`block text-[10px] pl-0.5 truncate w-full text-left ${platform.id === 'blog' && userPlan === 'free' ? "text-slate-600" :
+                                  isActive ? "text-purple-200" : "text-slate-500"
+                                  }`}>
+                                  {platform.sub}
+                                </span>
+                              </button>
+                            </Tooltip>
+                          </div>
                         );
                       })}
                     </div>
+
+                    {userPlan === "free" && (
+                      <div className="mt-4 text-center flex flex-col items-center gap-2">
+                        {usage.analyses === 2 && (
+                          <span className="text-xs font-medium text-amber-400">
+                            ⚠️ You have 1 free analysis left this month.
+                          </span>
+                        )}
+                        <span className="text-xs font-medium px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-slate-400">
+                          Free plan: <span className={usage.analyses >= 3 ? "text-red-400" : "text-white"}>{Math.min(usage.analyses, 3)}</span>/3 analyses used this month
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Right: Analyze Button */}
-                  <div className="flex-shrink-0 w-full lg:w-auto">
+
+                  {/* Right: Analyze Button */}
+                  <div className="flex-shrink-0 w-full lg:w-auto flex flex-col items-center lg:items-end">
                     <Button
                       onClick={handleAnalyze}
                       isLoading={isBusy}
-                      disabled={isInputEmpty()}
+                      disabled={isInputEmpty() || (userPlan === "free" && usage.analyses >= 3)}
                       size="xl"
                       variant="gradient"
-                      title={isInputEmpty() ? "Paste a link to analyze" : ""}
-                      className="w-full lg:w-auto h-[72px] rounded-xl font-bold tracking-wide px-8 text-lg !bg-gradient-to-r !from-purple-600 !to-purple-700 hover:scale-105 hover:!from-purple-500 hover:!to-purple-600 transition-all duration-300 shadow-lg shadow-purple-900/20"
+                      title={(userPlan === "free" && usage.analyses >= 3) ? "Free limit reached" : isInputEmpty() ? "Paste a link to analyze" : ""}
+                      className={`w-full lg:w-auto h-[72px] rounded-xl font-bold tracking-wide px-8 text-lg transition-all duration-300 shadow-lg ${userPlan === "free" && usage.analyses >= 3
+                        ? "!bg-slate-800 !text-slate-500 !cursor-not-allowed !shadow-none opacity-50"
+                        : "!bg-gradient-to-r !from-purple-600 !to-purple-700 hover:scale-105 hover:!from-purple-500 hover:!to-purple-600 shadow-purple-900/20"
+                        }`}
                     >
                       <div className="flex items-center gap-2">
                         {getAnalyzeButtonText()}
-                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                        </svg>
+                        {(userPlan !== "free" || usage.analyses < 3) && (
+                          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                          </svg>
+                        )}
+                        {(userPlan === "free" && usage.analyses >= 3) && (
+                          <svg className="w-5 h-5 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                          </svg>
+                        )}
                       </div>
                     </Button>
+
+                    {userPlan === "free" && usage.analyses >= 3 && (
+                      <div className="mt-3 text-center lg:text-right">
+                        <span className="text-xs font-medium text-amber-500/90 tracking-wide">
+                          Free plan limit reached (3/3). <Link href="/pricing" className="underline hover:text-amber-400">Upgrade to continue</Link>
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -832,14 +985,8 @@ export default function Dashboard() {
             Your analysis is secure and private.
           </p>
 
-          {error && (
-            <div className="mt-6 p-4 bg-red-900/20 text-red-200 rounded-xl border border-red-500/30 flex items-start gap-3 animate-scale-in shadow-sm backdrop-blur-sm">
-              <svg className="w-5 h-5 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span className="font-medium">{error}</span>
-            </div>
-          )}
+          {/* Limit Alert Replaces Inline Error */}
+          <LimitAlert error={error} onClose={() => setError(null)} />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
@@ -1033,19 +1180,26 @@ export default function Dashboard() {
                           <div className="flex items-center gap-2">
                             {/* Regenerate Button */}
                             <div className="relative">
-                              <Button
-                                size="sm"
-                                variant="secondary"
-                                className="!bg-white/5 !border !border-white/10 !text-slate-300 hover:!text-white hover:!bg-indigo-600 hover:!border-indigo-600 h-8 px-3 gap-2 flex items-center justify-center transition-all group shadow-sm bg-transparent"
-                                onClick={() => handleRegenerateScript(selectedPlatform || contentTarget)}
-                                disabled={isBusy || !generatedScript && !analysisResult?.suggested_script}
-                                title="Regenerate script"
-                              >
-                                <svg className={`w-4 h-4 text-indigo-400 group-hover:text-white transition-colors ${status === 'regenerating' ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                                </svg>
-                                <span className="font-medium">Regenerate</span>
-                              </Button>
+                              <Tooltip content={(selectedPlatform === "youtube" || contentTarget === "youtube") && userPlan === "free" && usage.youtube >= 1 ? "Free limit reached (1/mo)" : ""}>
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  className={`!bg-white/5 !border !border-white/10 !text-slate-300 hover:!text-white hover:!bg-indigo-600 hover:!border-indigo-600 h-8 px-3 gap-2 flex items-center justify-center transition-all group shadow-sm bg-transparent ${(selectedPlatform === "youtube" || contentTarget === "youtube") && userPlan === "free" && usage.youtube >= 1 ? "opacity-50 !cursor-not-allowed" : ""
+                                    }`}
+                                  onClick={() => handleRegenerateScript(selectedPlatform || contentTarget)}
+                                  disabled={
+                                    isBusy ||
+                                    (!generatedScript && !analysisResult?.suggested_script) ||
+                                    ((selectedPlatform === "youtube" || contentTarget === "youtube") && userPlan === "free" && usage.youtube >= 1)
+                                  }
+                                  title="Regenerate script"
+                                >
+                                  <svg className={`w-4 h-4 text-indigo-400 group-hover:text-white transition-colors ${status === 'regenerating' ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                  </svg>
+                                  <span className="font-medium">Regenerate</span>
+                                </Button>
+                              </Tooltip>
                             </div>
 
                             <Button
@@ -1147,53 +1301,55 @@ export default function Dashboard() {
         </div>
       </div >
       {/* Format Selection Modal */}
-      {showFormatModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-          <div className="bg-[#0b0c15] border border-white/10 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-scale-in" onClick={(e) => e.stopPropagation()}>
-            <div className="p-6">
-              <div className="flex items-center gap-4 mb-4 text-indigo-400">
-                <div className="w-10 h-10 rounded-full bg-indigo-900/20 flex items-center justify-center flex-shrink-0">
-                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z" />
-                  </svg>
+      {
+        showFormatModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+            <div className="bg-[#0b0c15] border border-white/10 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-scale-in" onClick={(e) => e.stopPropagation()}>
+              <div className="p-6">
+                <div className="flex items-center gap-4 mb-4 text-indigo-400">
+                  <div className="w-10 h-10 rounded-full bg-indigo-900/20 flex items-center justify-center flex-shrink-0">
+                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-xl font-bold text-white">Interview Format Detected</h3>
                 </div>
-                <h3 className="text-xl font-bold text-white">Interview Format Detected</h3>
-              </div>
-              <p className="text-slate-400 mb-6 leading-relaxed">
-                We detected that this content is an interview. How would you like the upgraded script to be written?
-              </p>
+                <p className="text-slate-400 mb-6 leading-relaxed">
+                  We detected that this content is an interview. How would you like the upgraded script to be written?
+                </p>
 
-              <div className="grid gap-3 mb-6">
-                <button
-                  onClick={() => resumeAnalysisWithFormat("preserve")}
-                  className="flex items-start gap-3 p-4 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 hover:border-indigo-500/50 transition-all text-left group"
-                >
-                  <div className="mt-0.5 w-4 h-4 rounded-full border border-slate-500 group-hover:border-indigo-400 flex items-center justify-center">
-                    <div className="w-2 h-2 rounded-full bg-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-white group-hover:text-indigo-300">Preserve Interview (Q&A)</h4>
-                    <p className="text-xs text-slate-500 mt-1">Keep speaker turns and dialogue structure, essentially upgrading the interview itself.</p>
-                  </div>
-                </button>
-                <button
-                  onClick={() => resumeAnalysisWithFormat("monologue")}
-                  className="flex items-start gap-3 p-4 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 hover:border-indigo-500/50 transition-all text-left group"
-                >
-                  <div className="mt-0.5 w-4 h-4 rounded-full border border-slate-500 group-hover:border-indigo-400 flex items-center justify-center">
-                    <div className="w-2 h-2 rounded-full bg-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-white group-hover:text-indigo-300">Convert to Monologue</h4>
-                    <p className="text-xs text-slate-500 mt-1">Transform into a cohesive, single-voice narrative or masterclass style.</p>
-                  </div>
-                </button>
-              </div>
+                <div className="grid gap-3 mb-6">
+                  <button
+                    onClick={() => resumeAnalysisWithFormat("preserve")}
+                    className="flex items-start gap-3 p-4 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 hover:border-indigo-500/50 transition-all text-left group"
+                  >
+                    <div className="mt-0.5 w-4 h-4 rounded-full border border-slate-500 group-hover:border-indigo-400 flex items-center justify-center">
+                      <div className="w-2 h-2 rounded-full bg-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-white group-hover:text-indigo-300">Preserve Interview (Q&A)</h4>
+                      <p className="text-xs text-slate-500 mt-1">Keep speaker turns and dialogue structure, essentially upgrading the interview itself.</p>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => resumeAnalysisWithFormat("monologue")}
+                    className="flex items-start gap-3 p-4 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 hover:border-indigo-500/50 transition-all text-left group"
+                  >
+                    <div className="mt-0.5 w-4 h-4 rounded-full border border-slate-500 group-hover:border-indigo-400 flex items-center justify-center">
+                      <div className="w-2 h-2 rounded-full bg-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-white group-hover:text-indigo-300">Convert to Monologue</h4>
+                      <p className="text-xs text-slate-500 mt-1">Transform into a cohesive, single-voice narrative or masterclass style.</p>
+                    </div>
+                  </button>
+                </div>
 
+              </div>
             </div>
           </div>
-        </div>
-      )}
-    </Layout>
+        )
+      }
+    </Layout >
   );
 }
