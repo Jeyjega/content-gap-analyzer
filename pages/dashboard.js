@@ -7,9 +7,11 @@ import Button from "../components/Button";
 import Card from "../components/Card";
 import Tooltip from "../components/Tooltip";
 import LimitAlert from "../components/LimitAlert";
+import UpgradeBanner from "../components/UpgradeBanner"; // NEW
 import AnalysisLoader from "../components/AnalysisLoader";
 import { supabase } from "../lib/supabaseClient";
 import { chunkText as chunkTextFromLib } from "../lib/chunkText";
+import { getEntitlementUX, ERROR_CODES } from "../lib/errorMapping"; // NEW
 
 // Fallback chunkText implementation
 const chunkText =
@@ -46,7 +48,11 @@ const parseError = (err) => {
     // 1. Try straightforward JSON parse
     let parsed = JSON.parse(msg);
     if (parsed && parsed.error) {
-      return { message: parsed.error, upgrade: !!parsed.upgrade };
+      return {
+        message: parsed.error,
+        upgrade: !!parsed.upgrade,
+        code: parsed.code // Capture backend error code
+      };
     }
   } catch (e1) {
     // 2. Try to find JSON object substring { ... }
@@ -58,7 +64,11 @@ const parseError = (err) => {
       try {
         let parsed = JSON.parse(potentialJson);
         if (parsed && parsed.error) {
-          return { message: parsed.error, upgrade: !!parsed.upgrade };
+          return {
+            message: parsed.error,
+            upgrade: !!parsed.upgrade,
+            code: parsed.code
+          };
         }
       } catch (e2) {
         // ignore
@@ -105,6 +115,8 @@ export default function Dashboard() {
   const [generatedScript, setGeneratedScript] = useState(null);
   const [analysisResult, setAnalysisResult] = useState(null);
   const [error, setError] = useState(null);
+  const [entitlementError, setEntitlementError] = useState(null); // specific entitlement state
+  const [showUpgradeBanner, setShowUpgradeBanner] = useState(false);
   const [showFallbackBanner, setShowFallbackBanner] = useState(false);
 
   // New states for script progress
@@ -447,6 +459,7 @@ export default function Dashboard() {
   };
 
   const handleAnalyze = async () => {
+    // 1. Pre-check for TOTAL_LIMIT (Optimistic UI)
     const isLimitReached = userPlan === "free" && usage.analyses >= 3;
 
     if (!session?.access_token) {
@@ -455,11 +468,13 @@ export default function Dashboard() {
     }
 
     if (isLimitReached) {
-      // Double check to update error UI just in case
-      setError({
-        message: "You’ve used all 3 free analyses this month. Upgrade to unlock unlimited access.",
-        upgrade: true
-      });
+      // Use centralized mapping for consistency even on optimistic check
+      const config = getEntitlementUX(ERROR_CODES.TOTAL_LIMIT);
+      setEntitlementError(config);
+      setShowUpgradeBanner(true);
+
+      // Also set generic error for fallback
+      setError({ message: config.bannerMessage, upgrade: true });
       return;
     }
     const token = session.access_token;
@@ -689,9 +704,26 @@ export default function Dashboard() {
       console.error("handleAnalyze error", err);
       setStatus("error");
       const errorObj = parseError(err);
+
+      // ENTITLEMENT HANDLING
+      if (errorObj.code) {
+        const uxConfig = getEntitlementUX(errorObj.code);
+        setEntitlementError(uxConfig);
+
+        if (uxConfig.showUpgradeCTA) {
+          setShowUpgradeBanner(true);
+          // Do NOT show LimitAlert for upgrade issues if we show the banner
+          return;
+        }
+      }
+
       setError(errorObj);
       log(`Error: ${errorObj.message}`);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      // Do not scroll to top if it's just an inline error or upgrade prompt?
+      // User requested "Sticky upgrade banner... Non-blocking".
+      if (!errorObj.code) {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
     }
   };
 
@@ -846,8 +878,13 @@ export default function Dashboard() {
                 <div className="flex flex-col lg:flex-row items-end justify-between gap-6">
                   {/* Left: Platform Selector */}
                   <div className="flex-1 w-full lg:w-auto min-w-0">
-                    <div className="text-left mb-2.5">
+                    <div className="text-left mb-2.5 flex items-center justify-between">
                       <h3 className="text-sm text-gray-400">Where will you publish this content?</h3>
+                      {entitlementError?.inlineMessage && (
+                        <span className="text-xs font-medium text-amber-500 animate-pulse bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                          {entitlementError.inlineMessage}
+                        </span>
+                      )}
                     </div>
 
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 w-full">
@@ -862,12 +899,13 @@ export default function Dashboard() {
                           id: "blog",
                           label: "Blog",
                           sub: "Articles",
-                          icon: "M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"
+                          icon: "M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z",
+                          paidOnly: true
                         },
                         {
                           id: "linkedin",
                           label: "LinkedIn",
-                          sub: "Professional",
+                          sub: "Post",
                           icon: "M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"
                         },
                         {
@@ -875,19 +913,46 @@ export default function Dashboard() {
                           label: "Twitter / X",
                           sub: "Short form",
                           icon: "M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"
+                        },
+                        {
+                          id: "x_thread",
+                          label: "X Thread",
+                          sub: "Deep dive",
+                          icon: "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z",
+                          paidOnly: true
+                        },
+                        {
+                          id: "linkedin_carousel",
+                          label: "Carousel",
+                          sub: "LinkedIn PDF",
+                          icon: "M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z",
+                          paidOnly: true
+                        },
+                        {
+                          id: "email_newsletter",
+                          label: "Email",
+                          sub: "Newsletter",
+                          icon: "M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z",
+                          paidOnly: true
                         }
                       ].map((platform) => {
+                        const isLocked = (platform.paidOnly || (platform.id === 'blog')) && userPlan === 'free';
                         const isActive = contentTarget === platform.id;
                         return (
 
                           <div key={platform.id} className="w-full h-full relative">
-                            <Tooltip content={platform.id === 'blog' && userPlan === 'free' ? "Available on Standard & Pro" : ""}>
+                            <Tooltip content={isLocked ? "Available on Standard & Pro" : ""}>
                               <button
                                 onClick={() => {
-                                  if (platform.id === 'blog' && userPlan === 'free') return;
+                                  if (isLocked) {
+                                    setEntitlementError({ inlineMessage: "Available on Standard & Pro plans." });
+                                    setShowUpgradeBanner(true);
+                                    return;
+                                  };
+                                  setEntitlementError(null); // Clear error on valid selection
                                   setContentTarget(platform.id)
                                 }}
-                                className={`relative flex flex-col justify-center items-start px-3 py-2 rounded-xl border transition-all duration-200 w-full h-[72px] ${platform.id === 'blog' && userPlan === 'free'
+                                className={`relative flex flex-col justify-center items-start px-3 py-2 rounded-xl border transition-all duration-200 w-full h-[72px] ${isLocked
                                   ? "opacity-40 cursor-not-allowed bg-white/5 border-white/5 grayscale"
                                   : isActive
                                     ? "bg-purple-600/10 border-2 border-purple-500 shadow-[0_0_15px_rgba(147,51,234,0.15)] scale-105 z-10"
@@ -895,20 +960,20 @@ export default function Dashboard() {
                                   }`}
                               >
                                 <div className="flex items-center gap-2 mb-1">
-                                  <div className={`p-1 rounded ${platform.id === 'blog' && userPlan === 'free' ? "bg-white/10 text-slate-500" :
+                                  <div className={`p-1 rounded ${isLocked ? "bg-white/10 text-slate-500" :
                                     isActive ? "bg-purple-600 text-white" : "bg-white/5 text-slate-400 group-hover:text-slate-300"
                                     }`}>
                                     <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
                                       <path d={platform.icon} />
                                     </svg>
                                   </div>
-                                  <span className={`text-xs font-semibold whitespace-nowrap ${platform.id === 'blog' && userPlan === 'free' ? "text-slate-500" :
+                                  <span className={`text-xs font-semibold whitespace-nowrap ${isLocked ? "text-slate-500" :
                                     isActive ? "text-white" : "text-slate-300"
                                     }`}>
-                                    {platform.label} {platform.id === 'blog' && userPlan === 'free' && "🔒"}
+                                    {platform.label} {isLocked && "🔒"}
                                   </span>
                                 </div>
-                                <span className={`block text-[10px] pl-0.5 truncate w-full text-left ${platform.id === 'blog' && userPlan === 'free' ? "text-slate-600" :
+                                <span className={`block text-[10px] pl-0.5 truncate w-full text-left ${isLocked ? "text-slate-600" :
                                   isActive ? "text-purple-200" : "text-slate-500"
                                   }`}>
                                   {platform.sub}
@@ -1160,10 +1225,13 @@ export default function Dashboard() {
                             disabled={isBusy}
                             className="appearance-none bg-white/5 border border-white/20 rounded-lg py-2 pl-3 pr-10 text-sm font-medium text-white focus:outline-none focus:border-indigo-500 hover:border-indigo-500 hover:bg-white/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm cursor-pointer"
                           >
-                            <option value="youtube" className="bg-[#0b0c15]">YouTube</option>
-                            <option value="blog" className="bg-[#0b0c15]">Blog</option>
-                            <option value="linkedin" className="bg-[#0b0c15]">LinkedIn</option>
-                            <option value="x" className="bg-[#0b0c15]">X (Twitter)</option>
+                            <option value="youtube" className="bg-[#0b0c15] text-white">YouTube</option>
+                            <option value="blog" disabled={userPlan === "free"} className={`bg-[#0b0c15] ${userPlan === "free" ? "text-slate-500" : "text-white"}`}>Blog {userPlan === "free" ? "🔒 [PRO]" : ""}</option>
+                            <option value="linkedin" className="bg-[#0b0c15] text-white">LinkedIn (Post)</option>
+                            <option value="linkedin_carousel" disabled={userPlan === "free"} className={`bg-[#0b0c15] ${userPlan === "free" ? "text-slate-500" : "text-white"}`}>LinkedIn (Carousel) {userPlan === "free" ? "🔒 [PRO]" : ""}</option>
+                            <option value="x" className="bg-[#0b0c15] text-white">X (Twitter)</option>
+                            <option value="x_thread" disabled={userPlan === "free"} className={`bg-[#0b0c15] ${userPlan === "free" ? "text-slate-500" : "text-white"}`}>X (Thread) {userPlan === "free" ? "🔒 [PRO]" : ""}</option>
+                            <option value="email_newsletter" disabled={userPlan === "free"} className={`bg-[#0b0c15] ${userPlan === "free" ? "text-slate-500" : "text-white"}`}>Email Newsletter {userPlan === "free" ? "🔒 [PRO]" : ""}</option>
                           </select>
                           <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 group-hover:text-indigo-400 transition-colors">
                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
@@ -1350,6 +1418,13 @@ export default function Dashboard() {
           </div>
         )
       }
+
+      <UpgradeBanner
+        visible={showUpgradeBanner}
+        title="Unlock Premium Features"
+        message={entitlementError?.bannerMessage || "Free limit reached. Upgrade to continue."}
+        onClose={() => setShowUpgradeBanner(false)}
+      />
     </Layout >
   );
 }

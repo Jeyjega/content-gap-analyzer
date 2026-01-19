@@ -1,6 +1,6 @@
 // pages/api/create-analysis.js
 import { createClient } from "@supabase/supabase-js";
-import { incrementUsage, ensureFreemiumRecord } from "../../lib/entitlements";
+import { incrementUsage, checkEntitlement } from "../../lib/entitlements";
 
 function pickNiceTitle({ providedTitle, videoId, metadata, transcript }) {
   if (providedTitle && String(providedTitle).trim()) return String(providedTitle).trim();
@@ -39,8 +39,12 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
-    // 4. Ensure Freemium Usage Row Exists
-    await ensureFreemiumRecord(user.id);
+    // Check Entitlement (Analysis Limit)
+    // We pass null for platform because 'analysis' is a global metric in checkEntitlement logic for TOTAL limit
+    const { allowed, error: entitlementError, code } = await checkEntitlement(user.id, null);
+    if (!allowed) {
+      return res.status(403).json({ error: entitlementError, code, upgrade: true });
+    }
 
 
     const {

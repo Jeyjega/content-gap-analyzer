@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { openai } from "../../lib/openaiServer";
-import { checkEntitlement, incrementUsage, ensureFreemiumRecord } from "../../lib/entitlements";
+import { checkEntitlement, incrementUsage } from "../../lib/entitlements";
 
 export default async function handler(req, res) {
   const formatMode = req.body.formatMode || "interview";
@@ -30,8 +30,7 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
-    // Ensure Freemium Row
-    await ensureFreemiumRecord(user.id);
+
 
     const aId = req.body.analysisId || req.body.analysis_id;
     if (!aId) {
@@ -77,21 +76,26 @@ export default async function handler(req, res) {
       targetPlatformForCheck = req.body.targetPlatform || analysis.metadata?.content_target || "youtube";
     }
 
-    // PERFORM CHECK
-    const { allowed, error: entitlementError } = await checkEntitlement(user.id, targetPlatformForCheck);
+    // REGENERATION LOGIC:
+    // If regenerating on SAME platform -> FREE (bypass entitlement check)
+    // If regenerating on NEW platform -> USAGE (perform entitlement check)
+    const currentPlatform = analysis.metadata?.content_target || "youtube";
+    const isPlatformSwitch = req.body.regenerateScript && targetPlatformForCheck !== currentPlatform;
+    const isSamePlatformRegen = req.body.regenerateScript && targetPlatformForCheck === currentPlatform;
 
-    if (!allowed) {
-      console.warn(`Entitlement blocked for user ${user.id}: ${entitlementError}`);
-      return res.status(403).json({ error: entitlementError, upgrade: true });
+    // Only skip entitlement check if it's a same-platform regeneration
+    if (!isSamePlatformRegen) {
+      // PERFORM CHECK
+      const { allowed, error: entitlementError, code } = await checkEntitlement(user.id, targetPlatformForCheck);
+
+      if (!allowed) {
+        console.warn(`Entitlement blocked for user ${user.id}: ${entitlementError}`);
+        return res.status(403).json({ error: entitlementError, code, upgrade: true });
+      }
     }
 
     // TRACK USAGE IF REGENERATING WITH PLATFORM CHANGE (Freemium Fix)
-    const currentPlatform = analysis.metadata?.content_target || "youtube";
-    // Check if this is a platform switch regeneration
-    // only relevant if regenerateScript is true (handled later in code, but we know intent here from body)
-    // Actually we need to check regenerateScript flag here effectively.
-    // But local flag 'regenerateScript' is defined lower down. Let's pull it up or check req.body directly.
-    if (req.body.regenerateScript && targetPlatformForCheck !== currentPlatform) {
+    if (isPlatformSwitch) {
       console.log(`[Freemium] Platform switch detected: ${currentPlatform} -> ${targetPlatformForCheck}`);
 
       // 1. Increment Counters
@@ -99,12 +103,11 @@ export default async function handler(req, res) {
       if (targetPlatformForCheck === "youtube") {
         await incrementUsage(user.id, "youtube_derivative");
       }
-
-      // 2. Update Metadata to prevent double-counting on subsequent identical regenerations
-      // We only update content_target, preserving other metadata
-      const newMetadata = { ...analysis.metadata, content_target: targetPlatformForCheck };
-      await supabase.from("analyses").update({ metadata: newMetadata }).eq("id", aId);
     }
+    // 2. Update Metadata to prevent double-counting on subsequent identical regenerations
+    // We only update content_target, preserving other metadata
+    const newMetadata = { ...analysis.metadata, content_target: targetPlatformForCheck };
+    await supabase.from("analyses").update({ metadata: newMetadata }).eq("id", aId);
 
     const transcript = analysis?.transcript || "";
     const preserveInterviewMode = formatMode === "interview";
@@ -322,12 +325,296 @@ Return JSON ONLY.
     }
 
     /* -------------------------------------------
-       CALL 2 — OUTLINE + HARD BUDGETS
-    ------------------------------------------- */
-    // Optional: Emit progress event
-    res.write(JSON.stringify({ status: "script_generating" }) + "\n");
+     CHECK FOR ADVANCED FORMAT SINGLE-PASS
+  ------------------------------------------- */
+    // Map frontend values to prompt values
+    const advancedFormatMap = {
+      "x_thread": "x_thread",
+      "linkedin_carousel": "carousel",
+      "email_newsletter": "email"
+    };
 
-    const outlinePrompt = `
+    // Use the robustly checked platform
+    const targetPlatform = targetPlatformForCheck;
+    let renderedScript = "";
+
+    const advancedTarget = advancedFormatMap[targetPlatform];
+
+    if (advancedTarget) {
+      console.log(`[Advanced Format] Generating single pass for: ${advancedTarget}`);
+
+      const wordCount = transcript.split(/\s+/).length;
+
+      const fastPrompt = `
+You are GapGens Advanced Format Engine.
+
+Your job is to generate a platform-ready advanced derivative
+directly from the transcript and identified gaps
+in ONE SINGLE PASS.
+
+This is a transformation task, not content creation.
+
+You MUST respect:
+• Transcript fidelity
+• Gap integrity
+• Advanced-format delivery rules
+
+⸻
+
+🔹 AUTHORITATIVE INPUTS (NON-NEGOTIABLE)
+
+Transcript (sole source of truth):
+${transcript}
+
+Identified Gaps (JSON, ordered):
+${JSON.stringify(gaps)}
+
+Original Word Count:
+${wordCount}
+
+Target Advanced Platform (EXACT value, one of):
+${advancedTarget}
+
+Allowed values:
+• x_thread
+• carousel
+• email
+
+⸻
+
+🔹 CRITICAL EXECUTION RULE (ABSOLUTE)
+
+The derivative script is IMPLICIT.
+
+You MUST:
+• Generate the derivative directly in the selected advanced format
+• Adapt structure, tone, and density for the chosen format
+• Resolve all gaps during generation
+
+You MUST NOT:
+❌ Generate or reference a generic derivative first
+❌ Assume an intermediate platform output exists
+❌ Chain or stage transformations
+
+This is a single-pass, platform-aware transformation.
+
+⸻
+
+🔹 SEPARATION OF CONCERNS (STRICT)
+
+• GAPS are platform-agnostic
+• FORMAT affects expression only, never truth
+
+You MUST:
+• Resolve ALL gaps
+• Use ONLY transcript material
+• Preserve the speaker’s intent, scope, and abstraction level
+
+You MUST NOT:
+❌ Add new gaps
+❌ Remove gaps
+❌ Invent examples
+❌ Introduce advice not implied in the transcript
+
+⸻
+
+🔹 GLOBAL NON-NEGOTIABLE CONSTRAINTS
+
+1️⃣ SOURCE FIDELITY (ABSOLUTE)
+
+You MAY:
+• Rephrase
+• Compress
+• Reorder
+• Add minimal glue for flow
+
+You MUST:
+• Use ONLY transcript ideas, anecdotes, metrics
+• Anchor every gap resolution in transcript material
+
+You MUST NOT:
+❌ Add tools, frameworks, or steps not mentioned
+❌ Generalize into creator advice
+❌ Introduce new domains
+
+⸻
+
+2️⃣ SINGLE NARRATIVE SPINE (MANDATORY)
+
+• Identify ONE core premise from the transcript
+• Everything must connect back to this spine
+• ❌ No parallel themes or side essays
+
+⸻
+
+🔹 NO EXAMPLE COMPLETION (CRITICAL)
+
+When resolving gaps, you MUST clarify
+what the speaker already said.
+
+You MUST NOT:
+• Add examples unless explicitly stated
+• Name specific items unless verbatim in transcript
+
+If the transcript is abstract → stay abstract
+If vague → preserve vagueness
+
+⸻
+
+🔹 ADVANCED FORMAT EXECUTION RULES
+
+(ONLY these rules apply below)
+
+⸻
+
+🧵 IF [TARGET_PLATFORM] = x_thread
+
+Purpose: Native X / Twitter insight thread
+
+ABSOLUTE RULES:
+• Each paragraph = ONE tweet
+• Each tweet = ONE sentence
+• No explanations
+• No interpretations
+• No conclusions
+
+Atomic insight definition:
+• One factual observation or claim
+• No cause-effect in same sentence
+
+MANDATORY SPLIT RULE:
+If a sentence includes:
+• cause + effect
+• action + outcome
+
+→ SPLIT into separate tweets
+
+LANGUAGE HARD BANS:
+❌ “I learned”
+❌ “This showed me”
+❌ “Which meant”
+❌ “Ultimately”
+❌ Emojis
+❌ Hashtags
+❌ Thread labels
+
+STRUCTURE:
+• Opening tweet: transcript spine
+• Middle tweets: gap resolutions (atomic)
+• Final tweet: standalone factual insight
+
+OUTPUT:
+Plain text
+Paragraph-separated
+No meta commentary
+
+⸻
+
+🧩 IF [TARGET_PLATFORM] = carousel
+
+Purpose: Slide-based LinkedIn / visual carousel
+
+FORMAT RULES:
+• Each paragraph = ONE slide
+• Max 2 sentences per slide
+• Clear, declarative language
+
+STRUCTURE:
+• Slide 1: Core spine / tension
+• Slides 2-N: One gap per slide
+• Final slide: Grounded synthesis
+
+STYLE:
+• Clear
+• Professional
+• No emojis
+• No CTA unless transcript implies
+
+Do NOT:
+❌ Use bullet lists
+❌ Use headings
+❌ Use marketing language
+
+⸻
+
+📧 IF [TARGET_PLATFORM] = email
+
+Purpose: Insight-driven newsletter / email
+
+FORMAT:
+Subject line
+Body paragraphs
+
+SUBJECT RULE:
+• Derived from transcript spine
+• Informational, not promotional
+
+BODY RULES:
+• Paragraphs 3–5 sentences
+• Resolve gaps progressively
+• Calm, reflective tone
+
+Do NOT:
+❌ Use sales CTAs
+❌ Use “In conclusion”
+❌ Add advice not implied
+
+End with a grounded observation, not a summary.
+
+⸻
+
+🔹 METRICS & SPECIFICS
+
+• Quote numbers EXACTLY
+• Do NOT estimate
+• If transcript lacks numbers → do not invent
+
+⸻
+
+🔹 QUALITY GATE (INTERNAL — DO NOT OUTPUT)
+
+Before responding, verify:
+• □ All gaps resolved
+• □ No new topics introduced
+• □ Format rules strictly followed
+• □ Transcript is sole source of truth
+• □ Single-pass execution honored
+
+⸻
+
+🔹 OUTPUT RULE (ABSOLUTE)
+
+Return ONLY the final advanced format output.
+• Plain text
+• No explanations
+• No meta commentary
+• No analysis
+`;
+
+      res.write(JSON.stringify({ status: "script_generating" }) + "\n");
+
+      const advancedResp = await openai.chat.completions.create({
+        model: "gpt-4o-mini", // Or gpt-4o if preferred for quality
+        messages: [
+          { role: "system", content: fastPrompt }
+        ],
+        temperature: 0.3,
+        max_tokens: 3000
+      });
+
+      const generatedContent = advancedResp.choices[0].message.content.trim();
+
+      renderedScript = generatedContent;
+    } else {
+
+      /* -------------------------------------------
+         CALL 2 — OUTLINE + HARD BUDGETS
+      ------------------------------------------- */
+      const targetPlatform = targetPlatformForCheck; // Ensure downstream uses check platform
+      // Optional: Emit progress event
+      res.write(JSON.stringify({ status: "script_generating" }) + "\n");
+
+      const outlinePrompt = `
 Create a STRICT outline for a derivative script.
 
 Rules:
@@ -351,30 +638,30 @@ Output JSON ONLY:
 }
 `;
 
-    const outlineResp = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: outlinePrompt },
-        { role: "user", content: JSON.stringify(gaps) }
-      ],
-      response_format: { type: "json_object" },
-      temperature: 0.2,
-      max_tokens: 1500
-    });
+      const outlineResp = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: outlinePrompt },
+          { role: "user", content: JSON.stringify(gaps) }
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0.2,
+        max_tokens: 1500
+      });
 
-    const outline = JSON.parse(outlineResp.choices[0].message.content);
+      const outline = JSON.parse(outlineResp.choices[0].message.content);
 
-    let finalScript = "";
+      let finalScript = "";
 
-    /* -------------------------------------------
-       CALL 3 — OPENING (ABSOLUTE OVERRIDE)
-    ------------------------------------------- */
-    const openingResp = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "system",
-          content: preserveInterviewMode ? `
+      /* -------------------------------------------
+         CALL 3 — OPENING (ABSOLUTE OVERRIDE)
+      ------------------------------------------- */
+      const openingResp = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: preserveInterviewMode ? `
 🚫 FORMAT LOCK — INTERVIEW MODE (NON-NEGOTIABLE)
 
 You are rewriting a REAL interview.
@@ -399,40 +686,40 @@ Start immediately in interview format.
 Write a strong editorial opening (${outline.opening_chars} chars).
 Re-establish context and themes.
 `
-        },
-        {
-          role: "user",
-          content: preserveInterviewMode
-            ? transcript
-            : `
+          },
+          {
+            role: "user",
+            content: preserveInterviewMode
+              ? transcript
+              : `
 Convert the following interview into a SINGLE-SPEAKER FIRST-PERSON MONOLOGUE.
 Do NOT summarize. Do NOT shorten. Preserve all reasoning.
 
 Interview:
 ${transcript}
 `
-        }
-      ],
-      temperature: 0.3,
-      max_tokens: 1200
-    });
+          }
+        ],
+        temperature: 0.3,
+        max_tokens: 1200
+      });
 
-    const openingText = openingResp.choices[0].message.content.trim();
-    finalScript += openingText + "\n\n";
+      const openingText = openingResp.choices[0].message.content.trim();
+      finalScript += openingText + "\n\n";
 
-    /* -------------------------------------------
-       CALL 4..N — GAP SECTIONS (ROLLING CONTEXT)
-    ------------------------------------------- */
-    let rollingContext = openingText;
+      /* -------------------------------------------
+         CALL 4..N — GAP SECTIONS (ROLLING CONTEXT)
+      ------------------------------------------- */
+      let rollingContext = openingText;
 
-    for (const section of outline.sections) {
-      const sectionResp = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content: preserveInterviewMode
-              ? `
+      for (const section of outline.sections) {
+        const sectionResp = await openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          messages: [
+            {
+              role: "system",
+              content: preserveInterviewMode
+                ? `
 🚫 FORMAT LOCK — INTERVIEW MODE (ABSOLUTE)
 
 You are CONTINUING THE SAME INTERVIEW.
@@ -458,7 +745,7 @@ Target length: ${section.chars} characters.
 
 If this reads like an article → INVALID.
 `
-              : `
+                : `
 🚫 FORMAT LOCK — MONOLOGUE MODE (ABSOLUTE)
 
 You are writing a SINGLE-SPEAKER MONOLOGUE.
@@ -488,26 +775,26 @@ Target length: ${section.chars} characters.
 
 If this contains questions or dialogue → INVALID.
 `
-          }
-        ],
-        temperature: 0.3,
-        max_tokens: 1800
-      });
+            }
+          ],
+          temperature: 0.3,
+          max_tokens: 1800
+        });
 
-      const sectionText = sectionResp.choices[0].message.content.trim();
-      finalScript += sectionText + "\n\n";
-      rollingContext += "\n\n" + sectionText;
-    }
-    /* -------------------------------------------
-       FINAL CALL — CLOSING (ABSOLUTE OVERRIDE)
-    ------------------------------------------- */
-    const closingResp = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "system",
-          content: preserveInterviewMode
-            ? `
+        const sectionText = sectionResp.choices[0].message.content.trim();
+        finalScript += sectionText + "\n\n";
+        rollingContext += "\n\n" + sectionText;
+      }
+      /* -------------------------------------------
+         FINAL CALL — CLOSING (ABSOLUTE OVERRIDE)
+      ------------------------------------------- */
+      const closingResp = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: preserveInterviewMode
+              ? `
 🚫 FORMAT LOCK — INTERVIEW MODE (CLOSING)
 
 Write the FINAL exchange of the interview.
@@ -519,7 +806,7 @@ Rules:
 - No new ideas
 - End naturally with a final answer
 `
-            : `
+              : `
 🚫 FORMAT LOCK — MONOLOGUE MODE (CLOSING)
 
 Write a FINAL MONOLOGUE CLOSING.
@@ -531,27 +818,27 @@ Rules:
 - No summarizing language
 - End with a complete, reflective final thought
 `
-        },
-        { role: "user", content: finalScript.slice(-4000) }
-      ],
-      temperature: 0.3,
-      max_tokens: 1200
-    });
+          },
+          { role: "user", content: finalScript.slice(-4000) }
+        ],
+        temperature: 0.3,
+        max_tokens: 1200
+      });
 
-    finalScript += closingResp.choices[0].message.content.trim();
+      finalScript += closingResp.choices[0].message.content.trim();
 
-    /* -------------------------------------------
-       FORMAT LAYER — MONOLOGUE (POST-PROCESS ONLY)
-    ------------------------------------------- */
+      /* -------------------------------------------
+         FORMAT LAYER — MONOLOGUE (POST-PROCESS ONLY)
+      ------------------------------------------- */
 
-    let renderedScript = finalScript;
+      renderedScript = finalScript;
 
-    if (formatMode === "monologue") {
-      const metadata = analysis?.metadata || {};
-      const targetPlatform = req.body.targetPlatform || metadata.content_target || "youtube";
-      const wordCount = transcript.split(/\s+/).length;
+      if (formatMode === "monologue") {
+        const metadata = analysis?.metadata || {};
+        const targetPlatform = req.body.targetPlatform || metadata.content_target || "youtube";
+        const wordCount = transcript.split(/\s+/).length;
 
-      const systemPrompt = `
+        const systemPrompt = `
 🧠 SYSTEM ROLE (ANTIGRAVITY)
 
 You are GapGens Derivative Script Engine.
@@ -989,29 +1276,31 @@ Return ONLY the final derivative script.
 	•	No meta commentary
 `;
 
-      // Interpolate larger text blocks
-      // Note: We use the original 'transcript' variable and 'gaps' array (converted to JSON)
-      const finalSystemPrompt = systemPrompt
-        .replace("[TRANSCRIPT]", transcript)
-        .replace("[GAPS_JSON]", JSON.stringify(gaps, null, 2));
+        // Interpolate larger text blocks
+        // Note: We use the original 'transcript' variable and 'gaps' array (converted to JSON)
+        const finalSystemPrompt = systemPrompt
+          .replace("[TRANSCRIPT]", transcript)
+          .replace("[GAPS_JSON]", JSON.stringify(gaps, null, 2));
 
-      const monologueResp = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content: finalSystemPrompt
-          },
-          {
-            role: "user",
-            content: "Generate the derivative script now."
-          }
-        ],
-        temperature: 0.15, // Low temp for fidelity
-        max_tokens: 4000
-      });
+        const monologueResp = await openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          messages: [
+            {
+              role: "system",
+              content: finalSystemPrompt
+            },
+            {
+              role: "user",
+              content: "Generate the derivative script now."
+            }
+          ],
+          temperature: 0.15, // Low temp for fidelity
+          max_tokens: 4000
+        });
 
-      renderedScript = monologueResp.choices[0].message.content.trim();
+        renderedScript = monologueResp.choices[0].message.content.trim();
+      }
+
     }
 
     /* -------------------------------------------
