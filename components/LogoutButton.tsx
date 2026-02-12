@@ -1,24 +1,40 @@
 'use client';
 
-import { supabase } from '@/lib/supabaseClient';
-import { useRouter } from 'next/navigation';
+import { supabase, deviceId } from '@/lib/supabaseClient';
 
 export default function LogoutButton() {
-    const router = useRouter();
+  const handleLogout = async () => {
+    try {
+      // 1️⃣ Revoke THIS device session in DB (best-effort)
+      if (deviceId) {
+        await fetch('/api/session/revoke', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ device_id: deviceId }),
+        });
+      }
 
-    const handleLogout = async () => {
-        await supabase.auth.signOut();
-        router.refresh();
-        router.push('/');
-    };
+      // 2️⃣ GLOBAL Supabase logout (IMPORTANT for Safari)
+      await supabase.auth.signOut({ scope: 'global' });
 
-    return (
-        <button
-            onClick={handleLogout}
-            className="text-gray-400 hover:text-white transition-colors text-sm font-medium"
-            aria-label="Sign out"
-        >
-            Sign Out
-        </button>
-    );
+    } catch (err) {
+      console.error('Logout error (ignored)', err);
+    } finally {
+      // 3️⃣ HARD RESET — Safari requires this
+      localStorage.clear();
+      sessionStorage.clear();
+
+      // 4️⃣ FORCE full reload (NOT router)
+      window.location.replace('/');
+    }
+  };
+
+  return (
+    <button
+      onClick={handleLogout}
+      className="text-gray-400 hover:text-white transition-colors text-sm font-medium"
+    >
+      Sign Out
+    </button>
+  );
 }

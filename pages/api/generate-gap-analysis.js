@@ -510,85 +510,301 @@ No meta commentary
 
 ⸻
 
-🧩 IF [TARGET_PLATFORM] = carousel
+IF [TARGET_PLATFORM] = carousel
 
-Purpose: Slide-based LinkedIn / visual carousel
+Purpose:
+Generate a LinkedIn visual carousel composed of strong, slide-ready statements.
+This is NOT a narrative, NOT an explanation, and NOT a summary.
 
-FORMAT RULES:
+---
+
+ABSOLUTE FORMAT RULES (NON-NEGOTIABLE)
+
 • Each paragraph = ONE slide
-• Max 2 sentences per slide
-• Clear, declarative language
+• Each slide = ONE atomic statement
+• Each slide MUST be:
+  - Declarative
+  - Factual
+  - Self-contained
+• Max 1 sentence per slide (preferred)
+• Max 2 sentences ONLY if the transcript explicitly requires it
 
-STRUCTURE:
-• Slide 1: Core spine / tension
-• Slides 2-N: One gap per slide
-• Final slide: Grounded synthesis
+---
 
-STYLE:
-• Clear
+SLIDE CONTENT RULES (CRITICAL)
+
+A valid carousel slide:
+• States WHAT happened, WHAT existed, or WHAT was observed
+• Does NOT explain:
+  - why it mattered
+  - what it led to
+  - how it changed outcomes
+• Does NOT interpret or evaluate
+
+If a sentence answers “why”, “so what”, or “impact” → DELETE or REWRITE.
+
+---
+
+🚨 HARD SENTENCE CONSTRAINT (CAROUSEL — ABSOLUTE)
+
+Each slide MUST be a CLOSED STATEMENT.
+
+A closed statement:
+• Does NOT explain
+• Does NOT evaluate
+• Does NOT describe impact
+• Does NOT describe cause or effect
+• Does NOT describe outcomes
+• Does NOT add qualifiers or implications
+
+If a sentence could be continued with:
+“which means…”
+“because…”
+“resulting in…”
+“that impacted…”
+“that affected…”
+“revealing…”
+“indicating…”
+
+→ THE SLIDE IS INVALID AND MUST BE DELETED.
+
+Slides may feel blunt or incomplete.
+That is REQUIRED.
+
+---
+
+STRUCTURE (STRICT)
+
+• Slide 1:
+  - Core spine or central observation from the transcript
+  - Stated plainly, without framing or hooks
+
+• Slides 2–N:
+  - ONE gap or underdeveloped idea per slide
+  - Expressed as a factual statement, not an analysis
+
+• Final slide:
+  - A grounded, factual synthesis
+  - NOT a takeaway
+  - NOT a lesson
+  - NOT a conclusion
+
+---
+
+LANGUAGE HARD BANS (DELETE IF GENERATED)
+
+The following are NOT allowed:
+• “This showed…”
+• “This revealed…”
+• “Which led to…”
+• “Resulting in…”
+• “This helped…”
+• “This improved…”
+• “In order to…”
+• “Ultimately…”
+• “This means…”
+
+If a slide implies cause → effect → INVALID.
+
+---
+
+STYLE RULES
+
+• Add Bold slide header 
 • Professional
-• No emojis
-• No CTA unless transcript implies
+• Neutral
+• Precise
+• No emphasis language
+• No motivational tone
 
-Do NOT:
-❌ Use bullet lists
-❌ Use headings
-❌ Use marketing language
+STRICTLY FORBIDDEN
+
+❌ Emojis  
+❌ Bullet points  
+❌ Marketing language  
+❌ Calls to action (unless explicitly stated in transcript)  
+❌ Meta commentary  
+❌ Gap references  
+
+---
+
+🔒 ENFORCEMENT GATE — CAROUSEL (MANDATORY)
+
+After drafting, validate EACH slide:
+
+1️⃣ Sentence Check
+- If more than 1 sentence → INVALID unless transcript forces it
+
+2️⃣ Atomicity Check
+- If the slide explains, interprets, or evaluates → INVALID
+
+3️⃣ Impact Check
+- If the slide implies outcome or benefit → INVALID
+
+4️⃣ Independence Check
+- If the slide depends on another slide to make sense → INVALID
+
+DELETE any slide that fails.
+Do NOT rewrite to soften.
+Shorter is better than incorrect.
+
+---
+
+ABSOLUTE INTERPRETATION BAN (CAROUSEL)
+
+Slides MUST NOT contain words or phrases that imply:
+• impact
+• importance
+• improvement
+• concern
+• significance
+• implication
+• disruption
+• clarity
+• insight
+• revelation
+
+BANNED VERBS (DELETE IF GENERATED):
+• impacted
+• revealed
+• showed
+• indicated
+• highlighted
+• improved
+• disrupted
+• clarified
+• resulted
+• led to
+
+If a slide answers “so what?”, “why”, or “what happened next” → DELETE IT.
+
+---
+
+OUTPUT RULE (ABSOLUTE)
+
+Add Bold slide header
+Return ONLY the carousel slides.
+Plain text.
+Paragraph-separated.
+No analysis.
+No explanations.
+No meta text.
 
 ⸻
 
 📧 IF [TARGET_PLATFORM] = email
 
-Purpose: Insight-driven newsletter / email
+Purpose:
+First-person, insight-driven email written in the speaker’s own voice.
+This is a derivative continuation of the transcript — NOT an analysis of gaps.
 
 FORMAT:
 Subject line
 Body paragraphs
 
-SUBJECT RULE:
-• Derived from transcript spine
-• Informational, not promotional
+SUBJECT RULES:
+• Derived from the transcript’s core spine
+• Informational and specific
+• Reflects what the speaker is exploring or noticing
+• NOT promotional
+• NOT curiosity clickbait
 
-BODY RULES:
-• Paragraphs 3–5 sentences
-• Resolve gaps progressively
-• Calm, reflective tone
+BODY RULES (STRICT):
 
-Do NOT:
-❌ Use sales CTAs
-❌ Use “In conclusion”
-❌ Add advice not implied
+• First-person voice only (“I”, “my”)
+• Paragraphs: 3–5 sentences each
+• Neutral, observational tone (NO reflection, NO evaluation)
+• Written as if the speaker is thinking through their experience
+• Gaps must be resolved implicitly by clarifying what the speaker did, noticed, or considered
 
-End with a grounded observation, not a summary.
+CRITICAL EMAIL CONSTRAINT (NON-NEGOTIABLE):
+
+You MUST NOT:
+❌ Describe gaps as gaps
+❌ Mention “missing”, “lack of”, “opportunity”, or “need to improve”
+❌ Explain that something was unclear, incomplete, or underdeveloped
+❌ Interpret the speaker’s behavior from the outside
+❌ Offer advice, lessons, or recommendations
+
+Instead:
+✔ Continue the speaker’s internal explanation
+✔ Make implicit thoughts explicit
+✔ Clarify actions, observations, and reasoning already present
+✔ Stay inside the speaker’s lived experience
+
+END RULE:
+• End with a grounded observation or realization
+• NOT a takeaway
+• NOT a summary
+• NOT a lesson
+• No “In conclusion”, “Overall”, “This shows”, etc.
+
+⸻
+
+🚨 EMAIL HARD ENFORCEMENT — CONTINUATION ONLY
+
+This email MUST read as if the speaker is still inside the experience,
+NOT reflecting on it afterward.
+
+STRICTLY FORBIDDEN:
+❌ “I realized…”
+❌ “I noticed that I lacked…”
+❌ “This showed me…”
+❌ “This made it difficult…”
+❌ “I see now…”
+❌ “This prompted me to consider…”
+❌ “could improve / could enhance / might help”
+
+You MUST NOT:
+• Evaluate your past behavior
+• Diagnose problems
+• Explain what was missing
+• Describe learning or realization
+
+Instead:
+✔ Describe what you did
+✔ Describe what you recorded
+✔ Describe what you observed
+✔ Describe what remained undefined
+✔ Leave meaning implicit
+
+If a sentence explains or evaluates another sentence → DELETE it.
+
+If a sentence sounds like reflection instead of lived narration → DELETE it.
+
+Shorter is acceptable.
+Incomplete is acceptable.
+Meta-analysis is NOT acceptable.
 
 ⸻
 
 🔹 METRICS & SPECIFICS
 
-• Quote numbers EXACTLY
-• Do NOT estimate
-• If transcript lacks numbers → do not invent
+• Quote numbers EXACTLY as stated in the transcript
+• Do NOT estimate or infer
+• If the transcript lacks numbers → do not add any
 
 ⸻
 
 🔹 QUALITY GATE (INTERNAL — DO NOT OUTPUT)
 
 Before responding, verify:
-• □ All gaps resolved
-• □ No new topics introduced
-• □ Format rules strictly followed
-• □ Transcript is sole source of truth
-• □ Single-pass execution honored
+• □ The email sounds like the original speaker
+• □ No meta-commentary about gaps exists
+• □ No advice or external interpretation appears
+• □ All content is transcript-grounded
+• □ Format and tone are email-appropriate
 
 ⸻
 
 🔹 OUTPUT RULE (ABSOLUTE)
 
-Return ONLY the final advanced format output.
+Return ONLY the final email.
 • Plain text
+• Subject + body only
 • No explanations
-• No meta commentary
 • No analysis
+• No meta commentary
 `;
 
       res.write(JSON.stringify({ status: "script_generating" }) + "\n");
@@ -1107,6 +1323,26 @@ This is NOT a narrative, NOT an essay, NOT an explanatory post.
 
 ---
 
+🚨 X THREAD DELETION PRIORITY (ABSOLUTE)
+
+If content cannot be expressed as a valid atomic tweet
+WITHOUT reflection, interpretation, or cause–effect,
+you MUST DELETE it.
+
+You are NOT required to preserve:
+• narrative flow
+• completeness
+• gap count
+• original ordering
+
+It is acceptable for the X thread to contain
+ONLY the atomic statements that fully comply.
+
+A short, correct thread is ALWAYS better
+than a longer invalid one.
+
+---
+
 ABSOLUTE FORMAT RULES (NON-NEGOTIABLE)
 
 • Each paragraph = ONE tweet
@@ -1200,6 +1436,33 @@ Each tweet should feel like it could stand alone in the feed.
 
 ---
 
+🚫 REFLECTION HARD BAN (X — ABSOLUTE)
+
+If a sentence contains ANY of the following:
+• “I realized”
+• “I learned”
+• “I think”
+• “I don’t think”
+• “What surprised me”
+• “This changed”
+• “That shift”
+• “This forced me”
+• “It helped me”
+• “It made me”
+• any statement about understanding, perspective, clarity, intention, or evaluation
+
+You MUST DELETE the sentence.
+
+You are NOT allowed to:
+• rewrite it
+• soften it
+• split it
+• rephrase it
+
+Deletion is the ONLY valid action.
+
+---
+
 STRICTLY FORBIDDEN
 
 • Multi-sentence tweets
@@ -1211,6 +1474,71 @@ STRICTLY FORBIDDEN
 • Hashtags
 • “🧵 THREAD” labels
 • Meta commentary
+
+---
+
+🔒 ENFORCEMENT GATE — X THREAD (MANDATORY)
+
+After drafting the X thread, you MUST run this validation loop internally.
+
+For EACH tweet, check ALL of the following:
+
+1️⃣ Sentence Count Check
+- If a tweet has more than ONE sentence → INVALID
+→ Split into multiple tweets or delete excess content
+
+2️⃣ Atomicity Check
+- If a tweet contains:
+  • explanation
+  • definition
+  • interpretation
+  • reflection
+  • conclusion
+→ INVALID → DELETE or SPLIT
+
+3️⃣ Cause–Effect Check
+- If a tweet includes cause + effect OR action + meaning
+→ INVALID → SPLIT into separate tweets
+
+4️⃣ Language Ban Check
+- If a tweet contains ANY banned phrases
+  (“I learned”, “this taught me”, “ultimately”, “this changed”, etc.)
+→ DELETE the tweet entirely
+
+5️⃣ Ending Check
+- The final tweet MUST be a standalone factual insight
+- If it sounds like a takeaway, wrap-up, or conclusion → DELETE or REWRITE
+
+You MUST repeat this validation until ALL tweets pass.
+
+DO NOT output the validation.
+DO NOT explain the changes.
+ONLY output the corrected X thread.
+
+---
+
+🚨 HARD DELETION RULE (X THREAD — ABSOLUTE)
+
+If a tweet violates ANY rule below, you MUST DELETE it.
+You are NOT allowed to rewrite, soften, or paraphrase it.
+
+DELETE the tweet if it contains:
+• Reflection (“I realized…”, “what surprised me…”, “this changed…”)
+• Interpretation or meaning-making
+• Cause → effect reasoning
+• Action → outcome reasoning
+• Any sentence explaining another sentence
+• More than one sentence
+• Any wrap-up, takeaway, or evaluative language
+
+If deletion reduces total tweet count, that is acceptable.
+Quality and atomic correctness are higher priority than length.
+
+Do NOT replace deleted tweets.
+Do NOT smooth transitions.
+Do NOT add new tweets to compensate.
+
+ONLY output tweets that fully pass ALL atomic rules.
 
 ---
 
@@ -1236,16 +1564,27 @@ No meta text.
 
 🔹 STRUCTURE REQUIREMENTS (ADAPTIVE)
 
-You MUST include:
-	•	A clear opening tied to the spine
-	•	One section per gap (may be compressed depending on platform)
-	•	A synthesis tying gaps together
-	•	A grounded close (NO motivational CTA unless transcript implies it)
+APPLIES TO:
+• YouTube
+• Blog
+• LinkedIn
 
-Headings:
-	•	Required for YouTube / Blog
-	•	Optional for LinkedIn
-	•	❌ Not used for X (use paragraph breaks instead)
+DO NOT APPLY TO:
+• X (Thread)
+
+For YouTube / Blog / LinkedIn ONLY:
+• A clear opening tied to the spine
+• One section per gap (may be compressed)
+• A synthesis tying gaps together
+• A grounded close (NO motivational CTA unless transcript implies it)
+
+For X (Thread):
+• Follow ONLY the X atomic rules
+• NO synthesis
+• NO close
+• NO wrap-up
+• NO narrative structure
+• NO sectioning
 
 ⸻
 

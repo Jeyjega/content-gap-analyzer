@@ -4,6 +4,7 @@ import Layout from '../components/Layout';
 import Button from '../components/Button';
 import Card from '../components/Card';
 import HeroVisual from '../components/HeroVisual';
+import SeatLimitExceeded from '../components/SeatLimitExceeded'; // Import component
 import { motion } from 'framer-motion';
 
 const ScrollReveal = ({ children, delay = 0 }) => (
@@ -20,6 +21,7 @@ const ScrollReveal = ({ children, delay = 0 }) => (
 export default function Home() {
   return (
     <Layout bgClass="bg-[#030014]" headerVariant="dark">
+      <SeatLimitExceeded /> {/* Render Component */}
       <Head>
         <title>GapGens - Turn Content into High-Impact Scripts</title>
         <meta name="description" content="GapGens analyzes your content, identifies what’s missing, and produces grounded derivative scripts — without hallucination or fluff." />

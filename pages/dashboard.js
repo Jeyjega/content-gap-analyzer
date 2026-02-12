@@ -8,6 +8,7 @@ import Card from "../components/Card";
 import Tooltip from "../components/Tooltip";
 import LimitAlert from "../components/LimitAlert";
 import UpgradeBanner from "../components/UpgradeBanner"; // NEW
+import UpgradeModal from "../components/UpgradeModal"; // Context-Aware Modal
 import AnalysisLoader from "../components/AnalysisLoader";
 import { supabase } from "../lib/supabaseClient";
 import { chunkText as chunkTextFromLib } from "../lib/chunkText";
@@ -118,6 +119,9 @@ export default function Dashboard() {
   const [entitlementError, setEntitlementError] = useState(null); // specific entitlement state
   const [showUpgradeBanner, setShowUpgradeBanner] = useState(false);
   const [showFallbackBanner, setShowFallbackBanner] = useState(false);
+  // Modal State
+  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
+  const [upgradeModalConfig, setUpgradeModalConfig] = useState({});
 
   // New states for script progress
   const [scriptProgress, setScriptProgress] = useState(0);
@@ -451,6 +455,24 @@ export default function Dashboard() {
     } catch (err) {
       console.error("Regeneration error", err);
       const errorObj = parseError(err);
+
+      // Entitlement Modal Check
+      if (errorObj.code) {
+        const uxConfig = getEntitlementUX(errorObj.code);
+        if (uxConfig.showUpgradeCTA) {
+          setUpgradeModalConfig({
+            headline: errorObj.code === "YOUTUBE_LIMIT" ? "Monthly YouTube Limit Reached" : "Upgrade to Unlock Feature",
+            bullets: errorObj.code === "YOUTUBE_LIMIT"
+              ? ["You’ve used your 1 free YouTube analysis.", "Upgrade to Pro for 50/month.", "Unlock all advanced features."]
+              : ["This feature requires a premium plan.", "Upgrade to Pro to unlock unlimited access.", "Generate content for all platforms."],
+            primaryActionText: "Upgrade Now"
+          });
+          setUpgradeModalOpen(true);
+          setStatus("done");
+          return;
+        }
+      }
+
       setError(errorObj);
       setStatus("done");
       // Auto-scroll to top so user isn't stuck at bottom with an error
@@ -460,7 +482,9 @@ export default function Dashboard() {
 
   const handleAnalyze = async () => {
     // 1. Pre-check for TOTAL_LIMIT (Optimistic UI)
-    const isLimitReached = userPlan === "free" && usage.analyses >= 3;
+    const limit = userPlan === "standard" ? 20 : 3;
+    // Pro is unlimited, checks bypass
+    const isLimitReached = (userPlan === "free" || userPlan === "standard") && usage.analyses >= limit;
 
     if (!session?.access_token) {
       setError("User session invalid. Please log in again.");
@@ -468,13 +492,17 @@ export default function Dashboard() {
     }
 
     if (isLimitReached) {
-      // Use centralized mapping for consistency even on optimistic check
-      const config = getEntitlementUX(ERROR_CODES.TOTAL_LIMIT);
-      setEntitlementError(config);
-      setShowUpgradeBanner(true);
-
-      // Also set generic error for fallback
-      setError({ message: config.bannerMessage, upgrade: true });
+      // MODAL REPLACES BANNER for this context
+      setUpgradeModalConfig({
+        headline: "Monthly Analysis Limit Reached",
+        bullets: [
+          `You’ve used all ${limit} analyses included in your ${userPlan} plan.`,
+          "Upgrade to Pro for UNLIMITED analyses.",
+          "Add up to 3 team members."
+        ],
+        primaryActionText: "Unlock Unlimited"
+      });
+      setUpgradeModalOpen(true);
       return;
     }
     const token = session.access_token;
@@ -711,6 +739,21 @@ export default function Dashboard() {
         setEntitlementError(uxConfig);
 
         if (uxConfig.showUpgradeCTA) {
+          // If it's a hard stop, show modal. If it's just a banner, show banner.
+          // For now, let's prioritize modal for total limits if code matches
+          if (errorObj.code === 'TOTAL_LIMIT') {
+            setUpgradeModalConfig({
+              headline: "Monthly Analysis Limit Reached",
+              bullets: [
+                "You’ve reached your monthly analysis limit.",
+                "Upgrade to Pro for UNLIMITED analyses.",
+                "Add up to 3 team members."
+              ]
+            });
+            setUpgradeModalOpen(true);
+            return;
+          }
+
           setShowUpgradeBanner(true);
           // Do NOT show LimitAlert for upgrade issues if we show the banner
           return;
@@ -813,7 +856,9 @@ export default function Dashboard() {
                 ].map((m) => (
                   <button
                     key={m.id}
-                    onClick={() => setMode(m.id)}
+                    onClick={() => {
+                      setMode(m.id);
+                    }}
                     className={`flex-1 py-4 text-sm font-medium transition-colors relative ${mode === m.id ? "text-white bg-white/5" : "text-slate-500 hover:text-slate-300 hover:bg-white/5"
                       }`}
                   >
@@ -936,7 +981,7 @@ export default function Dashboard() {
                           paidOnly: true
                         }
                       ].map((platform) => {
-                        const isLocked = (platform.paidOnly || (platform.id === 'blog')) && userPlan === 'free';
+                        const isLocked = false; // logic update: nothing is locked based on format
                         const isActive = contentTarget === platform.id;
                         return (
 
@@ -985,15 +1030,22 @@ export default function Dashboard() {
                       })}
                     </div>
 
-                    {userPlan === "free" && (
+                    {((userPlan === "free") || (userPlan === "standard" && usage.analyses >= 15)) && (
                       <div className="mt-4 text-center flex flex-col items-center gap-2">
-                        {usage.analyses === 2 && (
+                        {userPlan === "free" && usage.analyses === 2 && (
                           <span className="text-xs font-medium text-amber-400">
                             ⚠️ You have 1 free analysis left this month.
                           </span>
                         )}
+                        {userPlan === "standard" && usage.analyses === 19 && (
+                          <span className="text-xs font-medium text-amber-400">
+                            ⚠️ You have 1 analysis left this month.
+                          </span>
+                        )}
                         <span className="text-xs font-medium px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-slate-400">
-                          Free plan: <span className={usage.analyses >= 3 ? "text-red-400" : "text-white"}>{Math.min(usage.analyses, 3)}</span>/3 analyses used this month
+                          {userPlan === "free" ? "Free" : "Standard"} plan: <span className={(userPlan === "free" && usage.analyses >= 3) || (userPlan === "standard" && usage.analyses >= 20) ? "text-red-400" : "text-white"}>
+                            {Math.min(usage.analyses, userPlan === "standard" ? 20 : 3)}
+                          </span>/{userPlan === "standard" ? 20 : 3} analyses used this month
                         </span>
                       </div>
                     )}
@@ -1006,23 +1058,23 @@ export default function Dashboard() {
                     <Button
                       onClick={handleAnalyze}
                       isLoading={isBusy}
-                      disabled={isInputEmpty() || (userPlan === "free" && usage.analyses >= 3)}
+                      disabled={isInputEmpty() || ((userPlan === "free" && usage.analyses >= 3) || (userPlan === "standard" && usage.analyses >= 20))}
                       size="xl"
                       variant="gradient"
-                      title={(userPlan === "free" && usage.analyses >= 3) ? "Free limit reached" : isInputEmpty() ? "Paste a link to analyze" : ""}
-                      className={`w-full lg:w-auto h-[72px] rounded-xl font-bold tracking-wide px-8 text-lg transition-all duration-300 shadow-lg ${userPlan === "free" && usage.analyses >= 3
+                      title={((userPlan === "free" && usage.analyses >= 3) || (userPlan === "standard" && usage.analyses >= 20)) ? "Monthly limit reached" : isInputEmpty() ? "Paste a link to analyze" : ""}
+                      className={`w-full lg:w-auto h-[72px] rounded-xl font-bold tracking-wide px-8 text-lg transition-all duration-300 shadow-lg ${((userPlan === "free" && usage.analyses >= 3) || (userPlan === "standard" && usage.analyses >= 20))
                         ? "!bg-slate-800 !text-slate-500 !cursor-not-allowed !shadow-none opacity-50"
                         : "!bg-gradient-to-r !from-purple-600 !to-purple-700 hover:scale-105 hover:!from-purple-500 hover:!to-purple-600 shadow-purple-900/20"
                         }`}
                     >
                       <div className="flex items-center gap-2">
                         {getAnalyzeButtonText()}
-                        {(userPlan !== "free" || usage.analyses < 3) && (
+                        {!((userPlan === "free" && usage.analyses >= 3) || (userPlan === "standard" && usage.analyses >= 20)) && (
                           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
                           </svg>
                         )}
-                        {(userPlan === "free" && usage.analyses >= 3) && (
+                        {((userPlan === "free" && usage.analyses >= 3) || (userPlan === "standard" && usage.analyses >= 20)) && (
                           <svg className="w-5 h-5 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                           </svg>
@@ -1030,10 +1082,10 @@ export default function Dashboard() {
                       </div>
                     </Button>
 
-                    {userPlan === "free" && usage.analyses >= 3 && (
+                    {((userPlan === "free" && usage.analyses >= 3) || (userPlan === "standard" && usage.analyses >= 20)) && (
                       <div className="mt-3 text-center lg:text-right">
                         <span className="text-xs font-medium text-amber-500/90 tracking-wide">
-                          Free plan limit reached (3/3). <Link href="/pricing" className="underline hover:text-amber-400">Upgrade to continue</Link>
+                          {userPlan === "free" ? "Free" : "Standard"} plan limit reached ({userPlan === "standard" ? "20/20" : "3/3"}). <Link href="/pricing" className="underline hover:text-amber-400">Upgrade to continue</Link>
                         </span>
                       </div>
                     )}
@@ -1226,12 +1278,12 @@ export default function Dashboard() {
                             className="appearance-none bg-white/5 border border-white/20 rounded-lg py-2 pl-3 pr-10 text-sm font-medium text-white focus:outline-none focus:border-indigo-500 hover:border-indigo-500 hover:bg-white/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm cursor-pointer"
                           >
                             <option value="youtube" className="bg-[#0b0c15] text-white">YouTube</option>
-                            <option value="blog" disabled={userPlan === "free"} className={`bg-[#0b0c15] ${userPlan === "free" ? "text-slate-500" : "text-white"}`}>Blog {userPlan === "free" ? "🔒 [PRO]" : ""}</option>
+                            <option value="blog" className="bg-[#0b0c15] text-white">Blog</option>
                             <option value="linkedin" className="bg-[#0b0c15] text-white">LinkedIn (Post)</option>
-                            <option value="linkedin_carousel" disabled={userPlan === "free"} className={`bg-[#0b0c15] ${userPlan === "free" ? "text-slate-500" : "text-white"}`}>LinkedIn (Carousel) {userPlan === "free" ? "🔒 [PRO]" : ""}</option>
+                            <option value="linkedin_carousel" className="bg-[#0b0c15] text-white">LinkedIn (Carousel)</option>
                             <option value="x" className="bg-[#0b0c15] text-white">X (Twitter)</option>
-                            <option value="x_thread" disabled={userPlan === "free"} className={`bg-[#0b0c15] ${userPlan === "free" ? "text-slate-500" : "text-white"}`}>X (Thread) {userPlan === "free" ? "🔒 [PRO]" : ""}</option>
-                            <option value="email_newsletter" disabled={userPlan === "free"} className={`bg-[#0b0c15] ${userPlan === "free" ? "text-slate-500" : "text-white"}`}>Email Newsletter {userPlan === "free" ? "🔒 [PRO]" : ""}</option>
+                            <option value="x_thread" className="bg-[#0b0c15] text-white">X (Thread)</option>
+                            <option value="email_newsletter" className="bg-[#0b0c15] text-white">Email Newsletter</option>
                           </select>
                           <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 group-hover:text-indigo-400 transition-colors">
                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
@@ -1248,17 +1300,15 @@ export default function Dashboard() {
                           <div className="flex items-center gap-2">
                             {/* Regenerate Button */}
                             <div className="relative">
-                              <Tooltip content={(selectedPlatform === "youtube" || contentTarget === "youtube") && userPlan === "free" && usage.youtube >= 1 ? "Free limit reached (1/mo)" : ""}>
+                              <Tooltip content="">
                                 <Button
                                   size="sm"
                                   variant="secondary"
-                                  className={`!bg-white/5 !border !border-white/10 !text-slate-300 hover:!text-white hover:!bg-indigo-600 hover:!border-indigo-600 h-8 px-3 gap-2 flex items-center justify-center transition-all group shadow-sm bg-transparent ${(selectedPlatform === "youtube" || contentTarget === "youtube") && userPlan === "free" && usage.youtube >= 1 ? "opacity-50 !cursor-not-allowed" : ""
-                                    }`}
+                                  className="!bg-white/5 !border !border-white/10 !text-slate-300 hover:!text-white hover:!bg-indigo-600 hover:!border-indigo-600 h-8 px-3 gap-2 flex items-center justify-center transition-all group shadow-sm bg-transparent"
                                   onClick={() => handleRegenerateScript(selectedPlatform || contentTarget)}
                                   disabled={
                                     isBusy ||
-                                    (!generatedScript && !analysisResult?.suggested_script) ||
-                                    ((selectedPlatform === "youtube" || contentTarget === "youtube") && userPlan === "free" && usage.youtube >= 1)
+                                    (!generatedScript && !analysisResult?.suggested_script)
                                   }
                                   title="Regenerate script"
                                 >
@@ -1424,6 +1474,13 @@ export default function Dashboard() {
         title="Unlock Premium Features"
         message={entitlementError?.bannerMessage || "Free limit reached. Upgrade to continue."}
         onClose={() => setShowUpgradeBanner(false)}
+      />
+      <UpgradeModal
+        isOpen={upgradeModalOpen}
+        onClose={() => setUpgradeModalOpen(false)}
+        headline={upgradeModalConfig.headline}
+        bullets={upgradeModalConfig.bullets}
+        primaryActionText={upgradeModalConfig.primaryActionText}
       />
     </Layout >
   );

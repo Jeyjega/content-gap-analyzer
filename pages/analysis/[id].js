@@ -5,6 +5,7 @@ import Layout from "../../components/Layout";
 import Card from "../../components/Card";
 import Button from "../../components/Button";
 import Tooltip from "../../components/Tooltip";
+import UpgradeModal from "../../components/UpgradeModal"; // Context-Aware Modal
 
 // Helper to get platform-specific config
 function getPlatformConfig(platformName) {
@@ -112,6 +113,9 @@ export default function AnalysisView() {
   const [urlCopied, setUrlCopied] = useState(false);
   const [scriptCopied, setScriptCopied] = useState(false);
   const [isScriptMaximized, setIsScriptMaximized] = useState(false);
+  // Modal State
+  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
+  const [upgradeModalConfig, setUpgradeModalConfig] = useState({});
 
   useEffect(() => {
     if (isScriptMaximized) {
@@ -211,6 +215,17 @@ export default function AnalysisView() {
     }
   };
 
+  const handleRegenerationEntitlement = (platform) => {
+    // Simulate check or rely on catch block handling
+    // Ideally check usage here if available, but for now relying on backend error or passed props if we had them
+    // In this file we don't have usage context easily available without refetching.
+    // So we will rely on catching the error from the API mostly, OR if we know it's a paid platform.
+
+    const paidPlatforms = ['blog', 'linkedin_carousel', 'x_thread', 'email_newsletter'];
+    // However, we don't have 'userPlan' in this component state currently.
+    // Assuming the API call catches it. 
+  };
+
   if (loading) {
     return (
       <Layout bgClass="bg-[#030014]" headerVariant="dark">
@@ -276,6 +291,15 @@ export default function AnalysisView() {
       <div className="print:hidden">
         <Layout bgClass="bg-[#030014]" headerVariant="dark">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+
+            <UpgradeModal
+              isOpen={upgradeModalOpen}
+              onClose={() => setUpgradeModalOpen(false)}
+              headline={upgradeModalConfig.headline}
+              bullets={upgradeModalConfig.bullets}
+              primaryActionText={upgradeModalConfig.primaryActionText}
+            />
+
             {/* Back Link */}
             <div className="mb-8">
               <Link

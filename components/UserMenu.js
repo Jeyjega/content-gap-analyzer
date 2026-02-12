@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/router';
-import { supabase } from '@/lib/supabaseClient';
+import { supabase, deviceId } from '@/lib/supabaseClient';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function UserMenu({ user, isDarkHeader }) {
@@ -10,10 +10,26 @@ export default function UserMenu({ user, isDarkHeader }) {
 
     const handleLogout = async () => {
         try {
-            await supabase.auth.signOut();
-            router.push('/');
+            // 1. Unregister device session (best-effort)
+            if (deviceId) {
+                await fetch('/api/session/revoke', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ device_id: deviceId }),
+                });
+            }
+
+            // 2. Global Supabase SignOut
+            await supabase.auth.signOut({ scope: 'global' });
         } catch (error) {
             console.error('Error logging out:', error);
+        } finally {
+            // 3. Clear all local state (Critical for Safari/Brave)
+            localStorage.clear();
+            sessionStorage.clear();
+
+            // 4. Force hard reload to clear memory/caches
+            window.location.replace('/');
         }
     };
 
