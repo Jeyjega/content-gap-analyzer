@@ -101,24 +101,8 @@ async function getVideoMetadata(videoId, url) {
     // ytdl not available — fallback
   }
 
-  // Try yt-dlp -J (JSON metadata)
-  try {
-    // ensure yt-dlp exists
-    await execFileAsync("which", ["yt-dlp"]);
-    if (safeUrl) {
-      const { stdout } = await execFileAsync("yt-dlp", ["-J", safeUrl], { maxBuffer: 1024 * 1024 * 10 });
-      try {
-        const info = JSON.parse(stdout);
-        const title = info?.title ?? (info?.upload_date ? info?.title : null);
-        if (title) return { title };
-      } catch (e) {
-        // parse error -> ignore
-      }
-    }
-  } catch (e) {
-    // no yt-dlp or failed -> ignore
-  }
-
+  // Note: yt-dlp metadata fallback removed for Vercel compatibility
+  // If ytdl-core fails, we'll return null and continue without metadata
   return null;
 }
 
@@ -257,50 +241,16 @@ export default async function handler(req, res) {
           throw openErr;
         }
       } catch (err) {
-        console.log("ytdl-core streaming failed, will fallback to yt-dlp:", err?.message || err);
+        console.log("ytdl-core streaming failed:", err?.message || err);
       }
     }
   } catch (err) {
     console.log("ytdl-core import failed (ok):", err?.message || err);
   }
 
-  // 3) fallback: use yt-dlp CLI to download mp3 then transcribe
-  try {
-    await execFileAsync("which", ["yt-dlp"]);
-  } catch (e) {
-    return res.status(500).json({ error: "Server misconfiguration", details: "yt-dlp not installed. Install yt-dlp and ffmpeg (eg: brew install yt-dlp ffmpeg)" });
-  }
-
-  const outPath = path.join(TMP_DIR, `audio_${videoId}_${Date.now()}.mp3`);
-  try {
-    await execFileAsync("yt-dlp", ["-x", "--audio-format", "mp3", "-o", outPath, `https://www.youtube.com/watch?v=${videoId}`], {
-      maxBuffer: 1024 * 1024 * 200,
-    });
-
-    // after download we can also fetch metadata via yt-dlp -J if we don't have it
-    if (!metadata) {
-      try {
-        const { stdout } = await execFileAsync("yt-dlp", ["-J", `https://www.youtube.com/watch?v=${videoId}`], {
-          maxBuffer: 1024 * 1024 * 10,
-        });
-        try {
-          const info = JSON.parse(stdout);
-          if (info?.title) metadata = { title: info.title };
-        } catch (e) { }
-      } catch (e) { }
-    }
-
-    const transcript = await transcribeFileWithOpenAI(outPath);
-    safeRemove(outPath);
-
-    if (!transcript || transcript.length < 3) {
-      return res.status(500).json({ error: "Transcription returned empty result" });
-    }
-
-    return res.status(200).json({ source: "whisper", transcript, metadata });
-  } catch (err) {
-    console.error("yt-dlp -> whisper failed:", err?.message || err);
-    safeRemove(outPath);
-    return res.status(500).json({ error: "Transcription failed", details: err?.message || String(err) });
-  }
+  // All transcription methods failed
+  return res.status(500).json({
+    error: "Transcription failed",
+    details: "Unable to extract transcript. Please ensure the video has captions enabled or try a different video."
+  });
 }
