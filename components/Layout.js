@@ -49,6 +49,7 @@ export default function Layout({ children, bgClass = "bg-slate-50", headerVarian
                         </div>
                         <span className={`text-lg font-bold tracking-tight transition-colors ${isDarkHeader ? 'text-white group-hover:text-indigo-300' : 'text-slate-900 group-hover:text-indigo-600'}`}>
                             GapGens
+                            <span className="ml-2 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 rounded-md">Beta</span>
                         </span>
                     </Link>
 
