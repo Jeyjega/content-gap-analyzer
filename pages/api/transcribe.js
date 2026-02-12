@@ -86,7 +86,7 @@ async function getVideoMetadata(videoId, url) {
 
   // Try ytdl-core
   try {
-    const ytdlMod = await import("ytdl-core");
+    const ytdlMod = await import("@distube/ytdl-core");
     const ytdl = ytdlMod?.default ?? ytdlMod;
     if (typeof ytdl === "function" && safeUrl) {
       try {
@@ -139,7 +139,7 @@ async function transcribeFileWithOpenAI(filePath) {
       });
       return (typeof resp === "string" ? resp : (resp?.text ?? String(resp))).trim();
     }
-  } catch (e) {}
+  } catch (e) { }
 
   try {
     if (typeof client.transcriptions?.create === "function") {
@@ -150,7 +150,7 @@ async function transcribeFileWithOpenAI(filePath) {
       });
       return (typeof resp === "string" ? resp : (resp?.text ?? String(resp))).trim();
     }
-  } catch (e) {}
+  } catch (e) { }
 
   try {
     if (client.audio && typeof client.audio === "object") {
@@ -166,7 +166,7 @@ async function transcribeFileWithOpenAI(filePath) {
         }
       }
     }
-  } catch (e) {}
+  } catch (e) { }
 
   throw new Error("OpenAI client does not expose a recognized transcription method (or transcription failed). Update OpenAI SDK or inspect client shape.");
 }
@@ -221,7 +221,7 @@ export default async function handler(req, res) {
 
   // 2) ytdl-core streaming -> buffer -> whisper
   try {
-    const ytdlMod = await import("ytdl-core");
+    const ytdlMod = await import("@distube/ytdl-core");
     const ytdl = ytdlMod?.default ?? ytdlMod;
     if (typeof ytdl === "function") {
       try {
@@ -286,8 +286,8 @@ export default async function handler(req, res) {
         try {
           const info = JSON.parse(stdout);
           if (info?.title) metadata = { title: info.title };
-        } catch (e) {}
-      } catch (e) {}
+        } catch (e) { }
+      } catch (e) { }
     }
 
     const transcript = await transcribeFileWithOpenAI(outPath);

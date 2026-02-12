@@ -61,7 +61,7 @@ export default async function handler(req, res) {
         // call OpenAI embeddings API
         try {
           const resp = await openai.embeddings.create({
-            model: "text-embedding-3-small",
+            model: "text-embedding-ada-002",
             input: batch,
           });
           // resp.data is an array with embedding vectors

@@ -5,6 +5,7 @@ import Button from '../components/Button';
 import Card from '../components/Card';
 import HeroVisual from '../components/HeroVisual';
 import SeatLimitExceeded from '../components/SeatLimitExceeded'; // Import component
+import FeedbackBox from '../components/FeedbackBox'; // Import FeedbackBox
 import { motion } from 'framer-motion';
 
 const ScrollReveal = ({ children, delay = 0 }) => (
@@ -354,6 +355,11 @@ export default function Home() {
             <p className="mt-8 text-sm text-slate-500">No credit card required for standard analysis.</p>
           </div>
         </ScrollReveal>
+      </section>
+
+      {/* 8. FEEDBACK */}
+      <section className="py-12 bg-[#030014]">
+        <FeedbackBox />
       </section>
     </Layout >
   );

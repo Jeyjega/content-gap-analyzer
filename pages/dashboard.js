@@ -11,6 +11,7 @@ import UpgradeBanner from "../components/UpgradeBanner"; // NEW
 import UpgradeModal from "../components/UpgradeModal"; // Context-Aware Modal
 import AnalysisLoader from "../components/AnalysisLoader";
 import { supabase } from "../lib/supabaseClient";
+import FeedbackBox from "../components/FeedbackBox"; // Import FeedbackBox
 import { chunkText as chunkTextFromLib } from "../lib/chunkText";
 import { getEntitlementUX, ERROR_CODES } from "../lib/errorMapping"; // NEW
 
@@ -1415,6 +1416,11 @@ export default function Dashboard() {
                 <Button variant="ghost" className="text-slate-400 hover:text-white hover:bg-white/5">View History</Button>
               </Link>
             </div>
+
+            {/* Feedback Box - Only shown when analysis is done */}
+            {status === "done" && (analysisResult || generatedScript) && (
+              <FeedbackBox />
+            )}
           </div>
         </div>
       </div >
