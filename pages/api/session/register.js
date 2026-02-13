@@ -16,7 +16,7 @@ export default async function handler(req, res) {
     // 1️⃣ Fetch active sessions
     const { data: sessions, error } = await supabaseAdmin
       .from('user_sessions')
-      .select('id, device_id')
+      .select('id, device_id, last_seen_at')
       .eq('user_id', user_id)
       .eq('revoked', false)
       .gt('expires_at', new Date().toISOString());
@@ -35,11 +35,27 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true, reused: true });
     }
 
-    // ❌ CASE 2: New device but limit reached
+    // 🔄 CASE 2: New device but limit reached → Evict oldest (LRU)
     if (activeDevices.size >= 3) {
-      return res.status(403).json({
-        error: 'Seat limit reached (3 devices maximum)',
-      });
+      // Find the oldest session to revoke
+      // Sort by last_seen_at (ascending) -> oldest first
+      const oldestSession = sessions.sort(
+        (a, b) => new Date(a.last_seen_at).getTime() - new Date(b.last_seen_at).getTime()
+      )[0];
+
+      if (oldestSession) {
+        // Revoke the oldest session
+        const { error: revokeError } = await supabaseAdmin
+          .from('user_sessions')
+          .update({ revoked: true })
+          .eq('id', oldestSession.id);
+
+        if (revokeError) {
+          console.error('Failed to revoke old session', revokeError);
+          // Proceed anyway to try to let user in, or throw?
+          // Let's log it but try to proceed with insert to not block user impacting critical path
+        }
+      }
     }
 
     // ✅ CASE 3: New device + under limit → insert

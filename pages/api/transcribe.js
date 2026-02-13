@@ -248,6 +248,58 @@ export default async function handler(req, res) {
     console.log("ytdl-core import failed (ok):", err?.message || err);
   }
 
+  // 3) yt-dlp CLI fallback via youtube-dl-exec (Vercel compatible)
+  try {
+    console.log("Attempting youtube-dl-exec fallback...");
+    const youtubedl = (await import("youtube-dl-exec")).default;
+
+    const tmpFile = path.join(TMP_DIR, `ytdlp_${videoId}_${Date.now()}.mp3`);
+
+    await youtubedl(`https://www.youtube.com/watch?v=${videoId}`, {
+      extractAudio: true,
+      audioFormat: "mp3",
+      audioQuality: 0,
+      output: tmpFile,
+      noCheckCertificates: true,
+      noWarnings: true,
+      addHeader: [
+        'referer:youtube.com',
+        'user-agent:googlebot'
+      ]
+    });
+
+    if (fs.existsSync(tmpFile)) {
+      try {
+        // Try to get metadata from yt-dlp json dump if we still don't have it
+        if (!metadata) {
+          try {
+            const info = await youtubedl(`https://www.youtube.com/watch?v=${videoId}`, {
+              dumpSingleJson: true,
+              noCheckCertificates: true,
+              noWarnings: true
+            });
+            if (info?.title) metadata = { title: info.title };
+          } catch (e) { console.log("yt-dlp metadata fetch failed", e); }
+        }
+
+        const transcript = await transcribeFileWithOpenAI(tmpFile);
+        safeRemove(tmpFile);
+
+        if (transcript && transcript.length > 0) {
+          return res.status(200).json({ source: "yt-dlp-whisper", transcript, metadata });
+        }
+      } catch (transcribeErr) {
+        safeRemove(tmpFile);
+        throw transcribeErr;
+      }
+    } else {
+      console.log("yt-dlp failed to create output file");
+    }
+
+  } catch (err) {
+    console.error("youtube-dl-exec fallback failed:", err?.message || err);
+  }
+
   // All transcription methods failed
   return res.status(500).json({
     error: "Transcription failed",
