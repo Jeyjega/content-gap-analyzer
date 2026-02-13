@@ -159,6 +159,10 @@ async function transcribeFileWithOpenAI(filePath) {
  * Main handler
  */
 export default async function handler(req, res) {
+  // Handle CORS preflight
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   // Normalize body input
@@ -268,6 +272,15 @@ export default async function handler(req, res) {
 
     if (!fs.existsSync(binaryPath)) {
       console.warn(`yt-dlp binary not found at ${binaryPath}. Fallback might fail.`);
+    } else {
+      // Ensure executable permissions at runtime (vital for Vercel/AWS Lambda)
+      try {
+        if (process.platform !== 'win32') {
+          fs.chmodSync(binaryPath, '755');
+        }
+      } catch (chmodErr) {
+        console.error("Failed to chmod binary:", chmodErr);
+      }
     }
 
     const ytDlpWrap = new YtDlpWrap(binaryPath);
