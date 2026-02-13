@@ -739,6 +739,14 @@ export default function Dashboard() {
         const uxConfig = getEntitlementUX(errorObj.code);
         setEntitlementError(uxConfig);
 
+        // Special handling for disabled transcription
+        if (errorObj.code === "TRANSCRIPTION_DISABLED") {
+          // We rely on LimitAlert (which uses entitlementError) to show the message
+          // So we just return here to avoid setting generic error
+          setStatus("idle");
+          return;
+        }
+
         if (uxConfig.showUpgradeCTA) {
           // If it's a hard stop, show modal. If it's just a banner, show banner.
           // For now, let's prioritize modal for total limits if code matches

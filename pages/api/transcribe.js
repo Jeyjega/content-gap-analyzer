@@ -165,6 +165,14 @@ export default async function handler(req, res) {
   }
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
+  // Disable transcription in Vercel production
+  if (process.env.VERCEL) {
+    return res.status(400).json({
+      error: "Transcript generation is unavailable in production.",
+      code: "TRANSCRIPTION_DISABLED"
+    });
+  }
+
   // Normalize body input
   const input = normalizeInput(req.body || {});
   if (!input || (!input.url && !input.videoId)) {
