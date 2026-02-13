@@ -257,6 +257,15 @@ export default async function handler(req, res) {
     const binaryName = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
     const binaryPath = path.join(process.cwd(), 'bin', binaryName);
 
+    console.log(`[DEBUG] CWD: ${process.cwd()}`);
+    console.log(`[DEBUG] Binary Path: ${binaryPath}`);
+    console.log(`[DEBUG] File Exists: ${fs.existsSync(binaryPath)}`);
+    try {
+      console.log(`[DEBUG] Bin Dir Content:`, fs.readdirSync(path.join(process.cwd(), 'bin')));
+    } catch (e) {
+      console.log(`[DEBUG] Failed to read bin dir:`, e.message);
+    }
+
     if (!fs.existsSync(binaryPath)) {
       console.warn(`yt-dlp binary not found at ${binaryPath}. Fallback might fail.`);
     }

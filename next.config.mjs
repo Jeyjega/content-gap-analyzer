@@ -6,6 +6,11 @@ const nextConfig = {
     buildActivity: false,
     appIsrStatus: false,
   },
+  experimental: {
+    outputFileTracingIncludes: {
+      '/api/transcribe': ['./bin/**/*'],
+    },
+  },
 };
 
 export default nextConfig;
