@@ -1,8 +1,5 @@
 // pages/api/create-analysis.js
 
-export const config = {
-  runtime: 'nodejs',
-};
 import { createClient } from "@supabase/supabase-js";
 import { incrementUsage, checkEntitlement } from "../../lib/entitlements";
 
