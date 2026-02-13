@@ -248,36 +248,48 @@ export default async function handler(req, res) {
     console.log("ytdl-core import failed (ok):", err?.message || err);
   }
 
-  // 3) yt-dlp CLI fallback via youtube-dl-exec (Vercel compatible)
+  // 3) yt-dlp CLI fallback via yt-dlp-wrap (Vercel compatible)
   try {
-    console.log("Attempting youtube-dl-exec fallback...");
-    const youtubedl = (await import("youtube-dl-exec")).default;
+    console.log("Attempting yt-dlp-wrap fallback...");
+    const YtDlpWrap = (await import("yt-dlp-wrap")).default;
+
+    // Path to the binary downloaded by postinstall script
+    const binaryName = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
+    const binaryPath = path.join(process.cwd(), 'bin', binaryName);
+
+    if (!fs.existsSync(binaryPath)) {
+      console.warn(`yt-dlp binary not found at ${binaryPath}. Fallback might fail.`);
+    }
+
+    const ytDlpWrap = new YtDlpWrap(binaryPath);
 
     const tmpFile = path.join(TMP_DIR, `ytdlp_${videoId}_${Date.now()}.mp3`);
 
-    await youtubedl(`https://www.youtube.com/watch?v=${videoId}`, {
-      extractAudio: true,
-      audioFormat: "mp3",
-      audioQuality: 0,
-      output: tmpFile,
-      noCheckCertificates: true,
-      noWarnings: true,
-      addHeader: [
-        'referer:youtube.com',
-        'user-agent:googlebot'
-      ]
-    });
+    // download audio
+    await ytDlpWrap.execPromise([
+      `https://www.youtube.com/watch?v=${videoId}`,
+      "-x",
+      "--audio-format", "mp3",
+      "--audio-quality", "0",
+      "-o", tmpFile,
+      "--no-check-certificates",
+      "--no-warnings",
+      "--add-header", "referer:youtube.com",
+      "--add-header", "user-agent:googlebot"
+    ]);
 
     if (fs.existsSync(tmpFile)) {
       try {
         // Try to get metadata from yt-dlp json dump if we still don't have it
         if (!metadata) {
           try {
-            const info = await youtubedl(`https://www.youtube.com/watch?v=${videoId}`, {
-              dumpSingleJson: true,
-              noCheckCertificates: true,
-              noWarnings: true
-            });
+            const stdout = await ytDlpWrap.execPromise([
+              `https://www.youtube.com/watch?v=${videoId}`,
+              "-J",
+              "--no-check-certificates",
+              "--no-warnings"
+            ]);
+            const info = JSON.parse(stdout);
             if (info?.title) metadata = { title: info.title };
           } catch (e) { console.log("yt-dlp metadata fetch failed", e); }
         }
@@ -297,7 +309,7 @@ export default async function handler(req, res) {
     }
 
   } catch (err) {
-    console.error("youtube-dl-exec fallback failed:", err?.message || err);
+    console.error("yt-dlp-wrap fallback failed:", err?.message || err);
   }
 
   // All transcription methods failed
