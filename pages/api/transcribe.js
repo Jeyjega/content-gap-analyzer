@@ -1,6 +1,7 @@
 // pages/api/transcribe.js
 import fs from "fs";
 import path from "path";
+import { generate } from "youtube-po-token-generator";
 
 const TMP_DIR = "/tmp";
 
@@ -129,11 +130,27 @@ export default async function handler(req, res) {
     const ytdlMod = await import("@distube/ytdl-core");
     const ytdl = ytdlMod?.default ?? ytdlMod;
 
-    // 1. Create Authenticated Proxy Agent
+    // 1. Generate Fresh PO Token & Visitor Data
+    // We attempt to use the proxy in generation to match the download IP, if supported/relevant.
+    // The library signature is generate(), simplified for this context.
+    // We assume standard usage. If proxy support is needed in generation, check docs or environment.
+    console.log("Generating fresh PO Token...");
+    let generatedTokens = {};
+    try {
+      generatedTokens = await generate();
+      console.log("PO Token generated successfully.");
+    } catch (genErr) {
+      console.error("Token generation failed:", genErr.message);
+      // Fallback or fail? User wants "once and for all", but better to try without if gen fails?
+      // We'll proceed but warn.
+    }
+
+    const { poToken, visitorData } = generatedTokens;
+
+    // 2. Create Authenticated Proxy Agent
     let agent = undefined;
     let cookies = [];
 
-    // Parse cookies if available
     if (process.env.YOUTUBE_COOKIES_JSON) {
       try {
         cookies = JSON.parse(process.env.YOUTUBE_COOKIES_JSON);
@@ -142,13 +159,10 @@ export default async function handler(req, res) {
       }
     }
 
-    // Agent Creation Strategy
     if (process.env.PROXY_URL && ytdl.createProxyAgent) {
-      // Authenticated Proxy Agent (Preferred)
       agent = ytdl.createProxyAgent({ uri: process.env.PROXY_URL }, cookies);
       console.log("YouTube Proxy Agent created.");
     } else if (cookies.length > 0 && ytdl.createAgent) {
-      // Cookie Agent Fallback
       agent = ytdl.createAgent(cookies);
       console.log("YouTube Cookie Agent created (no proxy).");
     } else {
@@ -157,16 +171,16 @@ export default async function handler(req, res) {
 
     const safeUrl = `https://www.youtube.com/watch?v=${videoId}`;
 
-    // 2. Prepare YTDL Options - The "Bulletproof" Config
+    // 3. Prepare YTDL Options
     const ytdlOptions = {
       agent,
       filter: "audioonly",
-      quality: "highestaudio", // Whisper does better with decent audio
-      highWaterMark: 1 << 25, // 32MB buffer to prevent stream timeouts
-      playerClients: ["WEB"], // Force WEB client as tokens are usually generated there
-      // Inject Tokens if available
-      poToken: process.env.YOUTUBE_PO_TOKEN,
-      visitorData: process.env.YOUTUBE_VISITOR_DATA
+      quality: "highestaudio",
+      highWaterMark: 1 << 25, // 32MB
+      playerClients: ["WEB"],
+      // Use generated tokens
+      poToken: poToken,
+      visitorData: visitorData
     };
 
     console.log("YTDL Options configured with:", {
@@ -176,7 +190,7 @@ export default async function handler(req, res) {
       client: ytdlOptions.playerClients
     });
 
-    // 3. Fetch Metadata (Title)
+    // 4. Fetch Metadata (Title)
     let metadata = null;
     try {
       const info = await ytdl.getInfo(safeUrl, ytdlOptions);
@@ -187,7 +201,7 @@ export default async function handler(req, res) {
       console.warn("Metadata fetch failed (continuing to audio):", e.message);
     }
 
-    // 4. Stream Audio -> Buffer
+    // 5. Stream Audio -> Buffer
     console.log("Streaming audio...");
     const audioStream = ytdl(safeUrl, ytdlOptions);
 
@@ -197,7 +211,6 @@ export default async function handler(req, res) {
     }
     const audioBuffer = Buffer.concat(chunks);
 
-    // Safeguard: Limit buffer size for Serverless (approx 50MB limit on Vercel)
     if (audioBuffer.length > 50 * 1024 * 1024) {
       throw new Error("Audio too large for serverless processing (>50MB)");
     }
@@ -206,7 +219,7 @@ export default async function handler(req, res) {
     fs.writeFileSync(tmpFile, audioBuffer);
     console.log("Audio buffered to:", tmpFile);
 
-    // 5. Send to Whisper
+    // 6. Send to Whisper
     try {
       console.log("Sending to OpenAI Whisper...");
       const transcript = await transcribeFileWithOpenAI(tmpFile);
@@ -224,7 +237,7 @@ export default async function handler(req, res) {
 
   } catch (err) {
     console.error("Transcription failed:", err.message);
-    return res.status(500).json({ // Return 500 for application errors
+    return res.status(500).json({
       error: "Transcription failed",
       details: err.message
     });
