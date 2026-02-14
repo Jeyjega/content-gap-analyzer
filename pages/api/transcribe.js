@@ -1,17 +1,19 @@
 // pages/api/transcribe.js
-import fs from "fs";
-import path from "path";
 import { generate } from "youtube-po-token-generator";
+import { toFile } from "openai"; // Helper to convert buffer to file-like object for OpenAI
 
-const TMP_DIR = "/tmp";
+/**
+ * Config
+ */
+export const config = {
+  maxDuration: 60, // Still set max execution time (Hobby=10s/60s, Pro=300s)
+  api: {
+    bodyParser: true, // We need body parsing for the URL
+  },
+};
 
-function safeRemove(filePath) {
-  try {
-    if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
-  } catch (e) {
-    // ignore
-  }
-}
+// Force dynamic to prevent static generation
+export const dynamic = 'force-dynamic';
 
 function extractVideoId(urlOrId) {
   if (!urlOrId) return null;
@@ -67,16 +69,19 @@ function normalizeInput(body = {}) {
 }
 
 /**
- * Whisper Transcription
+ * Whisper Transcription (In-Memory)
  */
-async function transcribeFileWithOpenAI(filePath) {
+async function transcribeBufferWithOpenAI(audioBuffer) {
   const OpenAI = (await import("openai")).OpenAI;
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+  // Convert Buffer to File-like object
+  const file = await toFile(audioBuffer, 'audio.mp3', { type: 'audio/mpeg' });
 
   try {
     if (client.audio?.transcriptions?.create) {
       const resp = await client.audio.transcriptions.create({
-        file: fs.createReadStream(filePath),
+        file: file,
         model: "whisper-1",
         response_format: "text",
       });
@@ -87,7 +92,7 @@ async function transcribeFileWithOpenAI(filePath) {
   try {
     if (client.transcriptions?.create) {
       const resp = await client.transcriptions.create({
-        file: fs.createReadStream(filePath),
+        file: file,
         model: "whisper-1",
         response_format: "text",
       });
@@ -97,15 +102,6 @@ async function transcribeFileWithOpenAI(filePath) {
 
   throw new Error("OpenAI transcription failed.");
 }
-
-/**
- * Config
- */
-export const config = {
-  maxDuration: 60, // Return 504 if > 60s
-};
-
-export const dynamic = 'force-dynamic';
 
 /**
  * Main handler
@@ -124,16 +120,28 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Invalid YouTube URL or ID." });
   }
 
+  // START STREAMING RESPONSE
+  // We send headers immediately to keep connection open
+  res.writeHead(200, {
+    'Content-Type': 'application/json', // We'll eventually send JSON, but whitespace first is... technically invalid JSON but browsers/clients often tolerate leading whitespace or we can send text/plain if strictly needed.
+    // Actually, to be safe and rigorous with "Streaming JSON", usually you'd use NDJSON.
+    // But since the user asked for "heart-beat (like a space character)", let's trust their client handles it.
+    'Transfer-Encoding': 'chunked',
+    'Connection': 'keep-alive'
+  });
+
+  // Heartbeat Loop
+  const heartbeatInterval = setInterval(() => {
+    res.write(" "); // Send space to keep alive
+  }, 5000);
+
   try {
-    console.log(`Starting Proxy Transaction for Video ID: ${videoId}`);
+    console.log(`Starting Streaming Transaction for Video ID: ${videoId}`);
 
     const ytdlMod = await import("@distube/ytdl-core");
     const ytdl = ytdlMod?.default ?? ytdlMod;
 
     // 1. Generate Fresh PO Token & Visitor Data
-    // We attempt to use the proxy in generation to match the download IP, if supported/relevant.
-    // The library signature is generate(), simplified for this context.
-    // We assume standard usage. If proxy support is needed in generation, check docs or environment.
     console.log("Generating fresh PO Token...");
     let generatedTokens = {};
     try {
@@ -141,10 +149,7 @@ export default async function handler(req, res) {
       console.log("PO Token generated successfully.");
     } catch (genErr) {
       console.error("Token generation failed:", genErr.message);
-      // Fallback or fail? User wants "once and for all", but better to try without if gen fails?
-      // We'll proceed but warn.
     }
-
     const { poToken, visitorData } = generatedTokens;
 
     // 2. Create Authenticated Proxy Agent
@@ -152,11 +157,8 @@ export default async function handler(req, res) {
     let cookies = [];
 
     if (process.env.YOUTUBE_COOKIES_JSON) {
-      try {
-        cookies = JSON.parse(process.env.YOUTUBE_COOKIES_JSON);
-      } catch (e) {
-        console.error("Bad cookies JSON", e);
-      }
+      try { cookies = JSON.parse(process.env.YOUTUBE_COOKIES_JSON); }
+      catch (e) { console.error("Bad cookies JSON", e); }
     }
 
     if (process.env.PROXY_URL && ytdl.createProxyAgent) {
@@ -165,8 +167,6 @@ export default async function handler(req, res) {
     } else if (cookies.length > 0 && ytdl.createAgent) {
       agent = ytdl.createAgent(cookies);
       console.log("YouTube Cookie Agent created (no proxy).");
-    } else {
-      console.warn("No authentication cookies or proxy found. Using default agent.");
     }
 
     const safeUrl = `https://www.youtube.com/watch?v=${videoId}`;
@@ -175,20 +175,12 @@ export default async function handler(req, res) {
     const ytdlOptions = {
       agent,
       filter: "audioonly",
-      quality: "highestaudio",
+      quality: "lowestaudio", // User requested 'lowestaudio' for speed/size
       highWaterMark: 1 << 25, // 32MB
       playerClients: ["WEB"],
-      // Use generated tokens
       poToken: poToken,
       visitorData: visitorData
     };
-
-    console.log("YTDL Options configured with:", {
-      hasAgent: !!agent,
-      hasPoToken: !!ytdlOptions.poToken,
-      hasVisitorData: !!ytdlOptions.visitorData,
-      client: ytdlOptions.playerClients
-    });
 
     // 4. Fetch Metadata (Title)
     let metadata = null;
@@ -201,8 +193,8 @@ export default async function handler(req, res) {
       console.warn("Metadata fetch failed (continuing to audio):", e.message);
     }
 
-    // 5. Stream Audio -> Buffer
-    console.log("Streaming audio...");
+    // 5. Stream Audio -> In-Memory Buffer
+    console.log("Streaming audio to memory...");
     const audioStream = ytdl(safeUrl, ytdlOptions);
 
     const chunks = [];
@@ -210,36 +202,36 @@ export default async function handler(req, res) {
       chunks.push(chunk);
     }
     const audioBuffer = Buffer.concat(chunks);
+    console.log(`Audio buffered in memory. Size: ${audioBuffer.length} bytes`);
 
     if (audioBuffer.length > 50 * 1024 * 1024) {
-      throw new Error("Audio too large for serverless processing (>50MB)");
+      throw new Error("Audio too large for memory processing (>50MB)");
     }
 
-    const tmpFile = path.join(TMP_DIR, `audio_${videoId}_${Date.now()}.mp3`);
-    fs.writeFileSync(tmpFile, audioBuffer);
-    console.log("Audio buffered to:", tmpFile);
-
     // 6. Send to Whisper
-    try {
-      console.log("Sending to OpenAI Whisper...");
-      const transcript = await transcribeFileWithOpenAI(tmpFile);
-      safeRemove(tmpFile);
+    console.log("Sending to OpenAI Whisper...");
+    const transcript = await transcribeBufferWithOpenAI(audioBuffer);
 
-      if (transcript && transcript.length > 0) {
-        return res.status(200).json({ source: "whisper", transcript, metadata });
-      } else {
-        throw new Error("Whisper returned empty transcript");
-      }
-    } catch (openErr) {
-      safeRemove(tmpFile);
-      throw openErr;
+    // Stop heartbeat
+    clearInterval(heartbeatInterval);
+
+    if (transcript && transcript.length > 0) {
+      // Send final JSON
+      const finalResponse = { source: "whisper", transcript, metadata };
+      res.write(JSON.stringify(finalResponse));
+    } else {
+      throw new Error("Whisper returned empty transcript");
     }
 
   } catch (err) {
+    clearInterval(heartbeatInterval);
     console.error("Transcription failed:", err.message);
-    return res.status(500).json({
+    // Attempt to send error JSON if possible
+    res.write(JSON.stringify({
       error: "Transcription failed",
       details: err.message
-    });
+    }));
+  } finally {
+    res.end();
   }
 }
