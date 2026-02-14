@@ -131,43 +131,53 @@ export default async function handler(req, res) {
     const ytdlMod = await import("@distube/ytdl-core");
     const ytdl = ytdlMod?.default ?? ytdlMod;
 
-    // 1. Create Authenticated Proxy Agent
+    // 1. Create Authenticated Proxy Agent with Cookies, PO Token, and Visitor Data
     let agent = undefined;
-    if (process.env.PROXY_URL && process.env.YOUTUBE_COOKIES_JSON) {
+
+    // Prepare agent creation options
+    const agentOptions = [];
+    if (process.env.PROXY_URL) agentOptions.push({ uri: process.env.PROXY_URL });
+
+    // Check for cookies
+    let cookies = [];
+    if (process.env.YOUTUBE_COOKIES_JSON) {
       try {
-        const cookies = JSON.parse(process.env.YOUTUBE_COOKIES_JSON);
-        if (ytdl.createProxyAgent) {
-          agent = ytdl.createProxyAgent({ uri: process.env.PROXY_URL }, cookies);
-          console.log("YouTube Proxy Agent created.");
-        } else {
-          console.warn("ytdl.createProxyAgent not found. Using default agent.");
-        }
-      } catch (e) {
-        console.error("Failed to create Proxy Agent:", e.message);
-      }
-    } else if (process.env.YOUTUBE_COOKIES_JSON) {
-      // Fallback to just cookies if no proxy, though user asked for both
-      try {
-        const cookies = JSON.parse(process.env.YOUTUBE_COOKIES_JSON);
-        if (ytdl.createAgent) {
-          agent = ytdl.createAgent(cookies);
-          console.log("YouTube Cookie Agent created (no proxy).");
-        }
-      } catch (e) { }
+        cookies = JSON.parse(process.env.YOUTUBE_COOKIES_JSON);
+      } catch (e) { console.error("Bad cookies JSON", e); }
+    }
+
+    // Try to create the agent
+    if (process.env.PROXY_URL && ytdl.createProxyAgent) {
+      agent = ytdl.createProxyAgent({ uri: process.env.PROXY_URL }, cookies);
+      console.log("YouTube Proxy Agent created.");
+    } else if (cookies.length > 0 && ytdl.createAgent) {
+      agent = ytdl.createAgent(cookies);
+      console.log("YouTube Cookie Agent created (no proxy).");
     }
 
     const safeUrl = `https://www.youtube.com/watch?v=${videoId}`;
-    const options = {
+
+    // 2. Prepare YTDL Options with Tokens and forced WEB client
+    const ytdlOptions = {
       agent,
       filter: "audioonly",
-      quality: "highestaudio", // Better quality for Whisper
-      highWaterMark: 1 << 25, // Larger buffer for fetch
+      quality: "highestaudio",
+      highWaterMark: 1 << 25, // 32MB buffer to prevent timeouts
+      playerClients: ["WEB"], // Force WEB client as requested
     };
 
-    // 2. Fetch Metadata (Title)
+    // Inject PO Token and Visitor Data if available
+    if (process.env.YOUTUBE_PO_TOKEN) {
+      ytdlOptions.poToken = process.env.YOUTUBE_PO_TOKEN;
+    }
+    if (process.env.YOUTUBE_VISITOR_DATA) {
+      ytdlOptions.visitorData = process.env.YOUTUBE_VISITOR_DATA;
+    }
+
+    // 3. Fetch Metadata (Title) - Pass options here too
     let metadata = null;
     try {
-      const info = await ytdl.getInfo(safeUrl, { agent });
+      const info = await ytdl.getInfo(safeUrl, ytdlOptions);
       const title = info?.videoDetails?.title ?? (info?.title ?? null);
       if (title) metadata = { title };
       console.log("Metadata fetched:", title);
@@ -175,11 +185,10 @@ export default async function handler(req, res) {
       console.warn("Metadata fetch failed:", e.message);
     }
 
-    // 3. Stream Audio -> Buffer
+    // 4. Stream Audio -> Buffer
     console.log("Streaming audio...");
-    const audioStream = ytdl(safeUrl, options);
+    const audioStream = ytdl(safeUrl, ytdlOptions);
 
-    // Add timeout/error handling for the stream
     const chunks = [];
     for await (const chunk of audioStream) {
       chunks.push(chunk);
@@ -194,7 +203,7 @@ export default async function handler(req, res) {
     fs.writeFileSync(tmpFile, audioBuffer);
     console.log("Audio buffered to:", tmpFile);
 
-    // 4. Send to Whisper
+    // 5. Send to Whisper
     try {
       console.log("Sending to OpenAI Whisper...");
       const transcript = await transcribeFileWithOpenAI(tmpFile);
