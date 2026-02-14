@@ -3,9 +3,7 @@ import fs from "fs";
 import path from "path";
 import { promisify } from "util";
 import { exec } from "child_process";
-import * as xml2js from "xml2js"; // We might need a parser, but actually we can do simple regex for captions usually.
-// Wait, I shouldn't introduce xml2js if I don't have it. I'll check if I can use regex or if I need to use `fetch` and parse manually.
-// The user asked for "pure Node.js".
+import * as xml2js from "xml2js";
 
 const TMP_DIR = "/tmp";
 
@@ -82,14 +80,15 @@ function normalizeInput(body = {}) {
 /**
  * Try to fetch video metadata (title) using ytdl-core.
  */
-async function getVideoMetadata(videoId, url) {
+async function getVideoMetadata(videoId, url, agent) {
   const safeUrl = url || (videoId ? `https://www.youtube.com/watch?v=${videoId}` : null);
 
   try {
     const ytdlMod = await import("@distube/ytdl-core");
     const ytdl = ytdlMod?.default ?? ytdlMod;
     if (typeof ytdl === "function" && safeUrl) {
-      const info = await ytdl.getInfo(safeUrl);
+      const options = agent ? { agent } : {};
+      const info = await ytdl.getInfo(safeUrl, options);
       const title = info?.videoDetails?.title ?? (info?.title ?? null);
       if (title) return { title, info }; // Return full info for fallback use
     }
@@ -149,6 +148,22 @@ export default async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
+  // 1. Prepare YTDL Agent with Cookies to bypass "Sign in to confirm you're not a bot"
+  let agent = undefined;
+  if (process.env.YOUTUBE_COOKIES_JSON) {
+    try {
+      const cookies = JSON.parse(process.env.YOUTUBE_COOKIES_JSON);
+      const ytdlMod = await import("@distube/ytdl-core");
+      // @distube/ytdl-core exports createAgent
+      if (ytdlMod.createAgent) {
+        agent = ytdlMod.createAgent(cookies);
+        console.log("YouTube Agent created with cookies.");
+      }
+    } catch (e) {
+      console.error("Failed to create YouTube agent from cookies:", e.message);
+    }
+  }
+
   const input = normalizeInput(req.body || {});
   if (!input || (!input.url && !input.videoId)) {
     return res.status(400).json({ error: "Missing YouTube URL or ID." });
@@ -164,7 +179,7 @@ export default async function handler(req, res) {
   let ytdlInfo = null;
 
   try {
-    const metaRes = await getVideoMetadata(videoId, input.url);
+    const metaRes = await getVideoMetadata(videoId, input.url, agent);
     if (metaRes) {
       metadata = { title: metaRes.title };
       ytdlInfo = metaRes.info;
@@ -175,6 +190,7 @@ export default async function handler(req, res) {
   }
 
   // --- METHOD 1: youtube-transcript ---
+  // (Doesn't use cookies usually, acts as guest, but it's the fastest)
   try {
     console.log("Method 1: youtube-transcript");
     const mod = await import("youtube-transcript");
@@ -200,7 +216,13 @@ export default async function handler(req, res) {
       const ytdl = ytdlMod?.default ?? ytdlMod;
 
       const safeUrl = `https://www.youtube.com/watch?v=${videoId}`;
-      const audioStream = ytdl(safeUrl, { filter: "audioonly", quality: "lowestaudio" }); // lowestaudio is usually sufficient for speech and faster
+      const options = {
+        filter: "audioonly",
+        quality: "lowestaudio", // lowestaudio is usually sufficient for speech and faster
+      };
+      if (agent) options.agent = agent;
+
+      const audioStream = ytdl(safeUrl, options);
 
       const chunks = [];
       for await (const chunk of audioStream) {
@@ -240,7 +262,8 @@ export default async function handler(req, res) {
       try {
         const ytdlMod = await import("@distube/ytdl-core");
         const ytdl = ytdlMod?.default ?? ytdlMod;
-        ytdlInfo = await ytdl.getInfo(`https://www.youtube.com/watch?v=${videoId}`);
+        const options = agent ? { agent } : {};
+        ytdlInfo = await ytdl.getInfo(`https://www.youtube.com/watch?v=${videoId}`, options);
       } catch (e) { }
     }
 
