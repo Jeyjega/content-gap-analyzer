@@ -1,10 +1,17 @@
 // pages/api/extract-webtext.js
 
+export const config = {
+    maxDuration: 60,
+};
+
 /**
  * Basic web scraper that fetches HTML and extracts main text content.
  * Uses regex to strip tags, scripts, and styles.
  */
 export default async function handler(req, res) {
+    if (req.method === "OPTIONS") {
+        return res.status(200).end();
+    }
     if (req.method !== "POST") {
         return res.status(405).json({ error: "Method not allowed" });
     }

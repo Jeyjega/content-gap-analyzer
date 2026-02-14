@@ -2,9 +2,18 @@ import { createClient } from "@supabase/supabase-js";
 import { openai } from "../../lib/openaiServer";
 import { checkEntitlement, incrementUsage } from "../../lib/entitlements";
 
+export const config = {
+  maxDuration: 300,
+};
+
 export default async function handler(req, res) {
   const formatMode = req.body.formatMode || "interview";
   // allowed values: "interview" | "monologue"
+
+  // Handle CORS preflight
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
 
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
