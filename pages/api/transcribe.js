@@ -257,25 +257,20 @@ export default async function handler(req, res) {
           const xmlResp = await fetch(baseUrl);
           const xmlText = await xmlResp.text();
 
-          // Simple regex parse for XML captions (faster/lighter than xml2js)
-          // <text start="0.04" dur="2.96">Hello world</text>
-          const regex = /<text[^>]*>(.*?)<\/text>/g;
-          let match;
-          const lines = [];
-          while ((match = regex.exec(xmlText)) !== null) {
-            // Decoding HTML entities locally without big lib
-            let line = match[1]
-              .replace(/&amp;/g, '&')
-              .replace(/&lt;/g, '<')
-              .replace(/&gt;/g, '>')
-              .replace(/&quot;/g, '"')
-              .replace(/&#39;/g, "'");
-            lines.push(line);
-          }
-          const fullText = lines.join(" ").replace(/\s+/g, " ").trim();
+          if (xmlText) {
+            const parser = new xml2js.Parser();
+            const result = await parser.parseStringPromise(xmlText);
 
-          if (fullText.length > 50) {
-            return res.status(200).json({ source: "ytdl-captions-fallback", transcript: fullText, metadata });
+            // Extract text from <text> nodes
+            // structure: { transcript: { text: [ { _: "Hello", $: { start: "0", dur: "1" } } ] } }
+            if (result && result.transcript && result.transcript.text) {
+              const lines = result.transcript.text.map(item => item._).filter(Boolean);
+              const fullText = lines.join(" ").replace(/\s+/g, " ").trim();
+
+              if (fullText.length > 50) {
+                return res.status(200).json({ source: "ytdl-captions-fallback", transcript: fullText, metadata });
+              }
+            }
           }
         }
       }
