@@ -3,17 +3,8 @@ import fs from "fs";
 import path from "path";
 import { promisify } from "util";
 import { exec } from "child_process";
-import * as xml2js from "xml2js";
 
 const TMP_DIR = "/tmp";
-
-/**
- * Helpers
- */
-function toPlainText(transcriptArray) {
-  if (!Array.isArray(transcriptArray)) return "";
-  return transcriptArray.map((t) => (t.text ? t.text : "")).join(" ").replace(/\s+/g, " ").trim();
-}
 
 function safeRemove(filePath) {
   try {
@@ -46,7 +37,6 @@ function extractVideoId(urlOrId) {
 function normalizeInput(body = {}) {
   const possibleUrls = [body.url, body.videoUrl, body.youtubeUrl, body.youtube_url].filter(Boolean);
   const raw = possibleUrls.length > 0 ? possibleUrls[0] : body.videoId || body.id || "";
-
   const asString = String(raw || "").trim();
 
   const idFromInput = extractVideoId(asString);
@@ -78,34 +68,12 @@ function normalizeInput(body = {}) {
 }
 
 /**
- * Try to fetch video metadata (title) using ytdl-core.
- */
-async function getVideoMetadata(videoId, url, agent) {
-  const safeUrl = url || (videoId ? `https://www.youtube.com/watch?v=${videoId}` : null);
-
-  try {
-    const ytdlMod = await import("@distube/ytdl-core");
-    const ytdl = ytdlMod?.default ?? ytdlMod;
-    if (typeof ytdl === "function" && safeUrl) {
-      const options = agent ? { agent } : {};
-      const info = await ytdl.getInfo(safeUrl, options);
-      const title = info?.videoDetails?.title ?? (info?.title ?? null);
-      if (title) return { title, info }; // Return full info for fallback use
-    }
-  } catch (e) {
-    console.warn("Metadata fetch failed:", e.message);
-  }
-  return null;
-}
-
-/**
  * Whisper Transcription
  */
 async function transcribeFileWithOpenAI(filePath) {
   const OpenAI = (await import("openai")).OpenAI;
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-  // Try standard v4+ method
   try {
     if (client.audio?.transcriptions?.create) {
       const resp = await client.audio.transcriptions.create({
@@ -117,9 +85,8 @@ async function transcribeFileWithOpenAI(filePath) {
     }
   } catch (e) { console.warn("Whisper v4 method failed", e.message); }
 
-  // Try older methods or loose shape
   try {
-    if (client.transcriptions?.create) { // v3
+    if (client.transcriptions?.create) {
       const resp = await client.transcriptions.create({
         file: fs.createReadStream(filePath),
         model: "whisper-1",
@@ -136,7 +103,7 @@ async function transcribeFileWithOpenAI(filePath) {
  * Config
  */
 export const config = {
-  maxDuration: 60, // As requested by user
+  maxDuration: 60, // Return 504 if > 60s
 };
 
 export const dynamic = 'force-dynamic';
@@ -148,22 +115,6 @@ export default async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-  // 1. Prepare YTDL Agent with Cookies to bypass "Sign in to confirm you're not a bot"
-  let agent = undefined;
-  if (process.env.YOUTUBE_COOKIES_JSON) {
-    try {
-      const cookies = JSON.parse(process.env.YOUTUBE_COOKIES_JSON);
-      const ytdlMod = await import("@distube/ytdl-core");
-      // @distube/ytdl-core exports createAgent
-      if (ytdlMod.createAgent) {
-        agent = ytdlMod.createAgent(cookies);
-        console.log("YouTube Agent created with cookies.");
-      }
-    } catch (e) {
-      console.error("Failed to create YouTube agent from cookies:", e.message);
-    }
-  }
-
   const input = normalizeInput(req.body || {});
   if (!input || (!input.url && !input.videoId)) {
     return res.status(400).json({ error: "Missing YouTube URL or ID." });
@@ -174,137 +125,96 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Invalid YouTube URL or ID." });
   }
 
-  // Optimize: Get metadata & info once if possible
-  let metadata = null;
-  let ytdlInfo = null;
-
   try {
-    const metaRes = await getVideoMetadata(videoId, input.url, agent);
-    if (metaRes) {
-      metadata = { title: metaRes.title };
-      ytdlInfo = metaRes.info;
-      console.log("MetaData fetched:", metadata.title);
-    }
-  } catch (e) {
-    console.log("Metadata verification failed:", e.message);
-  }
+    console.log(`Starting Proxy Transaction for Video ID: ${videoId}`);
 
-  // --- METHOD 1: youtube-transcript ---
-  // (Doesn't use cookies usually, acts as guest, but it's the fastest)
-  try {
-    console.log("Method 1: youtube-transcript");
-    const mod = await import("youtube-transcript");
-    const YoutubeTranscript = mod?.YoutubeTranscript ?? mod?.default?.YoutubeTranscript ?? mod?.default ?? mod; // Handle ESM/CJS weirdness
+    const ytdlMod = await import("@distube/ytdl-core");
+    const ytdl = ytdlMod?.default ?? ytdlMod;
 
-    if (YoutubeTranscript && typeof YoutubeTranscript.fetchTranscript === "function") {
-      const arr = await YoutubeTranscript.fetchTranscript(videoId);
-      const text = toPlainText(arr);
-      if (text && text.length > 50) {
-        return res.status(200).json({ source: "captions", transcript: text, metadata });
-      }
-    }
-  } catch (err) {
-    console.log("Method 1 failed:", err.message);
-  }
-
-  // --- METHOD 2: ytdl-core Audio Stream -> Whisper ---
-  // Only if we have OpenAI key
-  if (process.env.OPENAI_API_KEY) {
-    try {
-      console.log("Method 2: ytdl-core -> Whisper");
-      const ytdlMod = await import("@distube/ytdl-core");
-      const ytdl = ytdlMod?.default ?? ytdlMod;
-
-      const safeUrl = `https://www.youtube.com/watch?v=${videoId}`;
-      const options = {
-        filter: "audioonly",
-        quality: "lowestaudio", // lowestaudio is usually sufficient for speech and faster
-      };
-      if (agent) options.agent = agent;
-
-      const audioStream = ytdl(safeUrl, options);
-
-      const chunks = [];
-      for await (const chunk of audioStream) {
-        chunks.push(chunk);
-      }
-      const audioBuffer = Buffer.concat(chunks);
-
-      // Limit buffer size to avoid Vercel memory limits (e.g. < 50MB) (approx check)
-      if (audioBuffer.length > 50 * 1024 * 1024) {
-        throw new Error("Audio too large for serverless processing");
-      }
-
-      const tmpFile = path.join(TMP_DIR, `audio_${videoId}_${Date.now()}.mp3`);
-      fs.writeFileSync(tmpFile, audioBuffer);
-
+    // 1. Create Authenticated Proxy Agent
+    let agent = undefined;
+    if (process.env.PROXY_URL && process.env.YOUTUBE_COOKIES_JSON) {
       try {
-        const transcript = await transcribeFileWithOpenAI(tmpFile);
-        safeRemove(tmpFile);
-        if (transcript && transcript.length > 50) {
-          return res.status(200).json({ source: "whisper", transcript, metadata });
+        const cookies = JSON.parse(process.env.YOUTUBE_COOKIES_JSON);
+        if (ytdl.createProxyAgent) {
+          agent = ytdl.createProxyAgent({ uri: process.env.PROXY_URL }, cookies);
+          console.log("YouTube Proxy Agent created.");
+        } else {
+          console.warn("ytdl.createProxyAgent not found. Using default agent.");
         }
-      } catch (openErr) {
-        safeRemove(tmpFile);
-        console.error("Whisper failed:", openErr.message);
+      } catch (e) {
+        console.error("Failed to create Proxy Agent:", e.message);
       }
-
-    } catch (err) {
-      console.log("Method 2 failed:", err.message);
-    }
-  }
-
-  // --- METHOD 3: fallback to manual caption fetching via ytdl info ---
-  try {
-    console.log("Method 3: Direct Caption Parse from YtDl Info");
-    // If we already have ytdlInfo from metadata step, use it. Otherwise fetch.
-    if (!ytdlInfo) {
+    } else if (process.env.YOUTUBE_COOKIES_JSON) {
+      // Fallback to just cookies if no proxy, though user asked for both
       try {
-        const ytdlMod = await import("@distube/ytdl-core");
-        const ytdl = ytdlMod?.default ?? ytdlMod;
-        const options = agent ? { agent } : {};
-        ytdlInfo = await ytdl.getInfo(`https://www.youtube.com/watch?v=${videoId}`, options);
+        const cookies = JSON.parse(process.env.YOUTUBE_COOKIES_JSON);
+        if (ytdl.createAgent) {
+          agent = ytdl.createAgent(cookies);
+          console.log("YouTube Cookie Agent created (no proxy).");
+        }
       } catch (e) { }
     }
 
-    if (ytdlInfo && ytdlInfo.player_response && ytdlInfo.player_response.captions) {
-      const tracks = ytdlInfo.player_response.captions.playerCaptionsTracklistRenderer?.captionTracks;
-      if (tracks && tracks.length > 0) {
-        // Prefer English
-        const enTrack = tracks.find(t => t.languageCode === 'en') || tracks[0];
-        const baseUrl = enTrack.baseUrl;
-        if (baseUrl) {
-          const fetchMod = await import("node-fetch");
-          const fetch = fetchMod.default || fetchMod;
+    const safeUrl = `https://www.youtube.com/watch?v=${videoId}`;
+    const options = {
+      agent,
+      filter: "audioonly",
+      quality: "highestaudio", // Better quality for Whisper
+      highWaterMark: 1 << 25, // Larger buffer for fetch
+    };
 
-          const xmlResp = await fetch(baseUrl);
-          const xmlText = await xmlResp.text();
+    // 2. Fetch Metadata (Title)
+    let metadata = null;
+    try {
+      const info = await ytdl.getInfo(safeUrl, { agent });
+      const title = info?.videoDetails?.title ?? (info?.title ?? null);
+      if (title) metadata = { title };
+      console.log("Metadata fetched:", title);
+    } catch (e) {
+      console.warn("Metadata fetch failed:", e.message);
+    }
 
-          if (xmlText) {
-            const parser = new xml2js.Parser();
-            const result = await parser.parseStringPromise(xmlText);
+    // 3. Stream Audio -> Buffer
+    console.log("Streaming audio...");
+    const audioStream = ytdl(safeUrl, options);
 
-            // Extract text from <text> nodes
-            // structure: { transcript: { text: [ { _: "Hello", $: { start: "0", dur: "1" } } ] } }
-            if (result && result.transcript && result.transcript.text) {
-              const lines = result.transcript.text.map(item => item._).filter(Boolean);
-              const fullText = lines.join(" ").replace(/\s+/g, " ").trim();
+    // Add timeout/error handling for the stream
+    const chunks = [];
+    for await (const chunk of audioStream) {
+      chunks.push(chunk);
+    }
+    const audioBuffer = Buffer.concat(chunks);
 
-              if (fullText.length > 50) {
-                return res.status(200).json({ source: "ytdl-captions-fallback", transcript: fullText, metadata });
-              }
-            }
-          }
-        }
+    if (audioBuffer.length > 50 * 1024 * 1024) {
+      throw new Error("Audio too large for serverless processing (>50MB)");
+    }
+
+    const tmpFile = path.join(TMP_DIR, `audio_${videoId}_${Date.now()}.mp3`);
+    fs.writeFileSync(tmpFile, audioBuffer);
+    console.log("Audio buffered to:", tmpFile);
+
+    // 4. Send to Whisper
+    try {
+      console.log("Sending to OpenAI Whisper...");
+      const transcript = await transcribeFileWithOpenAI(tmpFile);
+      safeRemove(tmpFile);
+
+      if (transcript && transcript.length > 0) {
+        return res.status(200).json({ source: "whisper", transcript, metadata });
+      } else {
+        throw new Error("Whisper returned empty transcript");
       }
+    } catch (openErr) {
+      safeRemove(tmpFile);
+      throw openErr;
     }
 
   } catch (err) {
-    console.log("Method 3 failed:", err.message);
+    console.error("Transcription failed:", err.message);
+    return res.status(500).json({ // 500 here, 504 handled by Vercel platform if >60s
+      error: "Transcription failed",
+      details: err.message
+    });
   }
-
-  return res.status(500).json({
-    error: "Transcription failed",
-    details: "All methods (captions, whisper, fallback) failed. Please try a different video."
-  });
 }
