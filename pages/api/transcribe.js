@@ -268,33 +268,33 @@ export default async function handler(req, res) {
 
     // Path to the binary downloaded by postinstall script
     const binaryName = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
-    const binaryPath = path.join(process.cwd(), 'bin', binaryName);
+    const binaryPath = path.join(process.cwd(), 'public', 'bin', binaryName);
 
     console.log(`[DEBUG] CWD: ${process.cwd()}`);
     console.log(`[DEBUG] Binary Path: ${binaryPath}`);
     console.log(`[DEBUG] File Exists: ${fs.existsSync(binaryPath)}`);
     try {
-      console.log(`[DEBUG] Bin Dir Content:`, fs.readdirSync(path.join(process.cwd(), 'bin')));
+      console.log(`[DEBUG] Bin Dir Content:`, fs.readdirSync(path.join(process.cwd(), 'public', 'bin')));
     } catch (e) {
       console.log(`[DEBUG] Failed to read bin dir:`, e.message);
     }
 
     if (!fs.existsSync(binaryPath)) {
       console.warn(`yt-dlp binary not found at ${binaryPath}. Fallback might fail.`);
-    } else {
-      // Ensure executable permissions at runtime (vital for Vercel/AWS Lambda)
-      try {
-        if (process.platform !== 'win32') {
-          fs.chmodSync(binaryPath, '755');
-        }
-      } catch (chmodErr) {
-        console.error("Failed to chmod binary:", chmodErr);
-      }
     }
 
     const ytDlpWrap = new YtDlpWrap(binaryPath);
 
     const tmpFile = path.join(TMP_DIR, `ytdlp_${videoId}_${Date.now()}.mp3`);
+
+    // Ensure executable permissions at runtime (vital for Vercel/AWS Lambda)
+    if (fs.existsSync(binaryPath)) {
+      try {
+        fs.chmodSync(binaryPath, '755');
+      } catch (e) {
+        console.error("Failed to chmod binary before exec:", e);
+      }
+    }
 
     // download audio
     await ytDlpWrap.execPromise([

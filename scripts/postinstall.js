@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 
 // Ensure bin directory exists
-const binDir = path.join(__dirname, '..', 'bin');
+const binDir = path.join(__dirname, '..', 'public', 'bin');
 if (!fs.existsSync(binDir)) {
     fs.mkdirSync(binDir, { recursive: true });
 }
