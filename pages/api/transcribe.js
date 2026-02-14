@@ -159,6 +159,8 @@ export const config = {
   maxDuration: 300,
 };
 
+export const dynamic = 'force-dynamic';
+
 /**
  * Main handler
  */
