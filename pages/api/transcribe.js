@@ -1,8 +1,6 @@
 // pages/api/transcribe.js
 import fs from "fs";
 import path from "path";
-import { promisify } from "util";
-import { exec } from "child_process";
 
 const TMP_DIR = "/tmp";
 
@@ -131,50 +129,54 @@ export default async function handler(req, res) {
     const ytdlMod = await import("@distube/ytdl-core");
     const ytdl = ytdlMod?.default ?? ytdlMod;
 
-    // 1. Create Authenticated Proxy Agent with Cookies, PO Token, and Visitor Data
+    // 1. Create Authenticated Proxy Agent
     let agent = undefined;
-
-    // Prepare agent creation options
-    const agentOptions = [];
-    if (process.env.PROXY_URL) agentOptions.push({ uri: process.env.PROXY_URL });
-
-    // Check for cookies
     let cookies = [];
+
+    // Parse cookies if available
     if (process.env.YOUTUBE_COOKIES_JSON) {
       try {
         cookies = JSON.parse(process.env.YOUTUBE_COOKIES_JSON);
-      } catch (e) { console.error("Bad cookies JSON", e); }
+      } catch (e) {
+        console.error("Bad cookies JSON", e);
+      }
     }
 
-    // Try to create the agent
+    // Agent Creation Strategy
     if (process.env.PROXY_URL && ytdl.createProxyAgent) {
+      // Authenticated Proxy Agent (Preferred)
       agent = ytdl.createProxyAgent({ uri: process.env.PROXY_URL }, cookies);
       console.log("YouTube Proxy Agent created.");
     } else if (cookies.length > 0 && ytdl.createAgent) {
+      // Cookie Agent Fallback
       agent = ytdl.createAgent(cookies);
       console.log("YouTube Cookie Agent created (no proxy).");
+    } else {
+      console.warn("No authentication cookies or proxy found. Using default agent.");
     }
 
     const safeUrl = `https://www.youtube.com/watch?v=${videoId}`;
 
-    // 2. Prepare YTDL Options with Tokens and forced WEB client
+    // 2. Prepare YTDL Options - The "Bulletproof" Config
     const ytdlOptions = {
       agent,
       filter: "audioonly",
-      quality: "highestaudio",
-      highWaterMark: 1 << 25, // 32MB buffer to prevent timeouts
-      playerClients: ["WEB"], // Force WEB client as requested
+      quality: "highestaudio", // Whisper does better with decent audio
+      highWaterMark: 1 << 25, // 32MB buffer to prevent stream timeouts
+      playerClients: ["WEB"], // Force WEB client as tokens are usually generated there
+      // Inject Tokens if available
+      poToken: process.env.YOUTUBE_PO_TOKEN,
+      visitorData: process.env.YOUTUBE_VISITOR_DATA
     };
 
-    // Inject PO Token and Visitor Data if available
-    if (process.env.YOUTUBE_PO_TOKEN) {
-      ytdlOptions.poToken = process.env.YOUTUBE_PO_TOKEN;
-    }
-    if (process.env.YOUTUBE_VISITOR_DATA) {
-      ytdlOptions.visitorData = process.env.YOUTUBE_VISITOR_DATA;
-    }
+    console.log("YTDL Options configured with:", {
+      hasAgent: !!agent,
+      hasPoToken: !!ytdlOptions.poToken,
+      hasVisitorData: !!ytdlOptions.visitorData,
+      client: ytdlOptions.playerClients
+    });
 
-    // 3. Fetch Metadata (Title) - Pass options here too
+    // 3. Fetch Metadata (Title)
     let metadata = null;
     try {
       const info = await ytdl.getInfo(safeUrl, ytdlOptions);
@@ -182,7 +184,7 @@ export default async function handler(req, res) {
       if (title) metadata = { title };
       console.log("Metadata fetched:", title);
     } catch (e) {
-      console.warn("Metadata fetch failed:", e.message);
+      console.warn("Metadata fetch failed (continuing to audio):", e.message);
     }
 
     // 4. Stream Audio -> Buffer
@@ -195,6 +197,7 @@ export default async function handler(req, res) {
     }
     const audioBuffer = Buffer.concat(chunks);
 
+    // Safeguard: Limit buffer size for Serverless (approx 50MB limit on Vercel)
     if (audioBuffer.length > 50 * 1024 * 1024) {
       throw new Error("Audio too large for serverless processing (>50MB)");
     }
@@ -221,7 +224,7 @@ export default async function handler(req, res) {
 
   } catch (err) {
     console.error("Transcription failed:", err.message);
-    return res.status(500).json({ // 500 here, 504 handled by Vercel platform if >60s
+    return res.status(500).json({ // Return 500 for application errors
       error: "Transcription failed",
       details: err.message
     });
