@@ -15,6 +15,13 @@ function pickNiceTitle({ providedTitle, videoId, metadata, transcript }) {
   return videoId ? `Analysis for ${videoId}` : "Analysis";
 }
 
+
+export const config = {
+  maxDuration: 60,
+};
+
+export const dynamic = 'force-dynamic';
+
 export default async function handler(req, res) {
   if (req.method === "OPTIONS") {
     return res.status(200).end();
