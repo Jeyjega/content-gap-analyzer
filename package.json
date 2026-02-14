@@ -6,8 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
-    "postinstall": "node scripts/postinstall.js"
+    "lint": "next lint"
   },
   "dependencies": {
     "@distube/ytdl-core": "^4.16.12",
@@ -20,8 +19,7 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "swr": "^2.3.6",
-    "youtube-transcript": "^1.2.1",
-    "yt-dlp-wrap": "^2.3.12"
+    "youtube-transcript": "^1.2.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
