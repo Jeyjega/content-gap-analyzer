@@ -1150,27 +1150,9 @@ You MUST NOT:
 
 ⸻
 
-CRITICAL CLARIFICATION — NO EXAMPLE COMPLETION
+🔹 THE NARRATIVE BRIDGE RULE (MANDATORY)
 
-When resolving gaps, you MUST explain or clarify
-what the speaker already said.
-
-You MUST NOT:
-- Add concrete examples unless the speaker explicitly gave them
-- Add specific items (e.g., coffee, subscriptions, expenses)
-  unless they appear verbatim or clearly in the transcript
-
-If the transcript is abstract, the resolution MUST remain abstract.
-If the transcript lacks examples, do NOT invent illustrative ones.
-
-You MUST NOT introduce specific examples, items, or categories
-(e.g., coffee, subscriptions, tools, habits, expenses)
-UNLESS they appear explicitly in the transcript.
-
-If the speaker used vague language
-(e.g., “small habits”, “daily spending”, “minor expenses”),
-you MUST preserve that vagueness
-and explain the idea WITHOUT naming examples.
+When resolving an identified gap, the agent MUST NOT use phrases like 'I didn't mention,' 'the speaker didn't specify,' or 'this was not elaborated.' Instead, use the gap as a transitionary bridge. Acknowledge the concept's importance (e.g., 'The system relies on X...') and immediately pivot to the next available transcript fact. The goal is to maintain authority without inventing new facts (0 Hallucination).
 
 🔹 PLATFORM-SPECIFIC EXECUTION RULES
 
