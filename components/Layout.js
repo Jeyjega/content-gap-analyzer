@@ -29,46 +29,39 @@ export default function Layout({ children, bgClass = "bg-slate-50", headerVarian
     const isDarkHeader = headerVariant === 'dark';
 
     return (
-        <div className={`min-h-screen flex flex-col font-sans ${bgClass} ${isDarkHeader ? 'text-white selection:bg-indigo-500/30 selection:text-indigo-200' : 'text-slate-900 selection:bg-indigo-100 selection:text-indigo-700'}`}>
+        <div className={`min-h-screen flex flex-col font-sans ${bgClass} ${isDarkHeader ? 'text-white selection:bg-[#10B981]/30 selection:text-white' : 'text-white selection:bg-[#10B981]/30 selection:text-white'}`}>
             <header
                 className={`
-          fixed top-0 w-full z-50 transition-all duration-300 border-b
+          fixed top-0 w-full z-50 transition-all duration-300
           ${scrolled
-                        ? isDarkHeader
-                            ? 'bg-[#030014]/80 backdrop-blur-xl border-white/10 shadow-lg shadow-black/5'
-                            : 'bg-white/80 backdrop-blur-xl border-slate-200/60 shadow-sm'
-                        : 'bg-transparent border-transparent'}
+                        ? 'bg-[#080809]/80 backdrop-blur-xl border-b border-white/5'
+                        : 'bg-transparent border-b border-transparent'}
         `}
             >
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-                    <Link href="/" className="flex items-center gap-2.5 group" onClick={handleScrollToTop}>
-                        <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-violet-600 rounded-lg flex items-center justify-center text-white font-bold text-lg shadow-lg shadow-indigo-500/20 transition-transform duration-300 group-hover:scale-105 group-hover:rotate-3">
-                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                            </svg>
-                        </div>
-                        <span className={`text-lg font-bold tracking-tight transition-colors ${isDarkHeader ? 'text-white group-hover:text-indigo-300' : 'text-slate-900 group-hover:text-indigo-600'}`}>
+                <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+                    <Link href="/" className="flex items-center gap-2 group" onClick={handleScrollToTop}>
+                        <span className={`font-display text-xl font-bold tracking-tighter uppercase text-white transition-colors`}>
                             GapGens
-                            <span className="ml-2 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 rounded-md">Beta</span>
                         </span>
                     </Link>
 
-                    <nav className={`hidden md:flex items-center gap-1 p-1 rounded-full border backdrop-blur-sm ${isDarkHeader ? 'bg-white/5 border-white/10' : 'bg-slate-100/50 border-slate-200/50'}`}>
-                        <NavLink href="/" active={isActive('/')} onClick={handleScrollToTop} isDark={isDarkHeader}>Home</NavLink>
-                        <NavLink href="/dashboard" active={isActive('/dashboard')} isDark={isDarkHeader}>Dashboard</NavLink>
-                        <NavLink href="/history" active={isActive('/history')} isDark={isDarkHeader}>History</NavLink>
+                    <nav className="hidden md:flex items-center gap-8 px-8 py-2">
+                        <NavLink href="/" isDark={true}>HOME</NavLink>
+                        <NavLink href="/dashboard" isDark={true}>DASHBOARD</NavLink>
+                        <NavLink href="/history" isDark={true}>HISTORY</NavLink>
                     </nav>
 
                     <div className="flex items-center gap-4">
                         {!loading && (
                             user ? (
-                                <UserMenu user={user} isDarkHeader={isDarkHeader} />
+                                <UserMenu user={user} isDarkHeader={true} />
                             ) : (
                                 <Link
                                     href="/login"
-                                    className="hidden sm:inline-flex px-5 py-2 rounded-full bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 transition-all shadow-lg shadow-slate-900/20 hover:shadow-slate-900/30 hover:-translate-y-0.5"
+                                    className="hidden sm:inline-flex px-6 py-2 bg-transparent text-[#10B981] font-mono text-xs font-bold tracking-widest border border-[#10B981]/30 hover:border-[#10B981] hover:bg-[#10B981]/10 transition-all"
+                                    style={{ borderRadius: "0px" }}
                                 >
-                                    Log In
+                                    EXECUTE STRATEGY
                                 </Link>
                             )
                         )}
@@ -76,29 +69,26 @@ export default function Layout({ children, bgClass = "bg-slate-50", headerVarian
                 </div>
             </header>
 
-            <main className="flex-grow pt-24 pb-12">
+            <main className="flex-grow pt-16">
                 {children}
             </main>
 
-            <Footer isDark={isDarkHeader} />
+            <Footer isDark={true} />
         </div>
     );
 }
 
-function NavLink({ href, active, children, onClick, isDark }) {
+function NavLink({ href, children, isDark }) {
     return (
         <Link
             href={href}
-            onClick={onClick}
             className={`
-        px-4 py-1.5 rounded-full text-sm font-medium transition-all duration-200
-        ${active
-                    ? isDark ? 'bg-white/10 text-white shadow-sm border border-white/5' : 'bg-white text-slate-900 shadow-sm'
-                    : isDark ? 'text-slate-400 hover:text-white hover:bg-white/5' : 'text-slate-500 hover:text-slate-900 hover:bg-white/50'
-                }
+        text-xs font-mono tracking-widest transition-colors duration-200 uppercase
+        text-slate-400 hover:text-white relative group
       `}
         >
             {children}
+            <span className="absolute -bottom-2 left-0 w-full h-[1px] bg-[#10B981]/0 group-hover:bg-[#10B981] transition-colors"></span>
         </Link>
     );
 }

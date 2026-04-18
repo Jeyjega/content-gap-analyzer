@@ -209,6 +209,8 @@ export default function Dashboard() {
 
   // Format Selection State
   const [showFormatModal, setShowFormatModal] = useState(false);
+  const [showToneModal, setShowToneModal] = useState(false);
+  const [selectedTone, setSelectedTone] = useState(null);
   const [pendingAnalysisId, setPendingAnalysisId] = useState(null);
   const [formatChoice, setFormatChoice] = useState(null); // 'preserve' | 'monologue'
 
@@ -269,17 +271,25 @@ export default function Dashboard() {
 
   const resumeAnalysisWithFormat = async (choice, analysisIdOverride) => {
     setShowFormatModal(false);
-    setFormatChoice(choice);
+    setFormatChoice(choice === "preserve" ? "interview" : "monologue");
+    
+    // Trigger the Tone Selection modal instead of directly fetching
+    setShowToneModal(true);
+  };
 
-    // Resume flow
+  const generateScriptWithTone = async (tone) => {
+    setShowToneModal(false);
+    setSelectedTone(tone);
+
     setStatus("generating-analysis");
-    const analysisId = analysisIdOverride || pendingAnalysisId;
+    const analysisId = pendingAnalysisId;
 
     if (!analysisId) {
-      throw new Error("Missing analysisId for resumeAnalysis");
+      setError(parseError("Missing analysisId for generateScriptWithTone"));
+      return;
     }
 
-    log(`Resuming analysis ${analysisId} with format=${choice}`);
+    log(`Generating script ${analysisId} with tone=${tone}`);
 
     try {
       const token = session.access_token;
@@ -288,56 +298,43 @@ export default function Dashboard() {
         "Authorization": `Bearer ${token}`
       };
 
-      const formatMode = choice === "preserve" ? "interview" : "monologue";
-
-      const response = await fetch("/api/generate-gap-analysis", {
+      const response = await fetch("/api/generate-script", {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({
           analysisId,
-          formatMode
+          formatMode: formatChoice,
+          tone: tone,
+          gaps: analysisResult?.gaps
         })
       });
 
       if (!response.ok) {
-        throw new Error(`Analysis failed: ${await response.text()}`);
+        throw new Error(`Script generation failed: ${await response.text()}`);
       }
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder("utf-8");
-
       let buffer = "";
 
-      /* 
-         NDJSON STREAM PARSER
-      */
+      /* NDJSON STREAM PARSER */
       while (true) {
         const { value, done } = await reader.read();
-
         if (value) {
           buffer += decoder.decode(value, { stream: true });
           const lines = buffer.split("\n");
-          // Keep the last incomplete chunk in the buffer
           buffer = lines.pop();
 
           for (const line of lines) {
             if (!line.trim()) continue;
-
             try {
               const event = JSON.parse(line);
-
-              if (event.status === "gaps_ready") {
-                log("Received: Gaps Ready");
-                setAnalysisResult(event); // Updates gaps UI immediately
-              }
-              else if (event.status === "script_generating") {
+              if (event.status === "script_generating") {
                 log("Received: Script Generating...");
-              }
-              else if (event.status === "script_ready") {
+              } else if (event.status === "script_ready") {
                 log("Received: Script Ready");
                 setGeneratedScript(event.script);
-              }
-              else if (event.status === "error") {
+              } else if (event.status === "error") {
                 throw new Error(event.message);
               }
             } catch (parseErr) {
@@ -345,11 +342,9 @@ export default function Dashboard() {
             }
           }
         }
-
         if (done) break;
       }
 
-      // Clear final buffer if any
       if (buffer.trim()) {
         try {
           const event = JSON.parse(buffer);
@@ -363,7 +358,7 @@ export default function Dashboard() {
       log("Analysis orchestration complete.");
 
     } catch (err) {
-      console.error("resumeAnalysis error", err);
+      console.error("generateScriptWithTone error", err);
       setStatus("error");
       const errorObj = parseError(err);
       setError(errorObj);
@@ -395,7 +390,7 @@ export default function Dashboard() {
     try {
       const token = session.access_token;
 
-      const response = await fetch("/api/generate-gap-analysis", {
+      const response = await fetch("/api/generate-script", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -405,6 +400,7 @@ export default function Dashboard() {
           analysisId,
           regenerateScript: true,
           targetPlatform: newPlatform,
+          tone: selectedTone,
           gaps: analysisResult.gaps,
           summary: analysisResult.summary, // Pass these to preserve DB consistency if needed
           titles: analysisResult.titles,
@@ -568,6 +564,13 @@ export default function Dashboard() {
         }
 
         const transJson = await rTrans.json();
+        if (transJson.error) {
+          throw new Error(JSON.stringify({
+             error: transJson.details ? `${transJson.error}: ${transJson.details}` : transJson.error,
+             code: transJson.code || "TRANSCRIPTION_ERROR",
+             details: transJson.details
+          }));
+        }
         const transText = transJson.transcript || transJson.text || transJson.data?.transcript;
         if (!transText) throw new Error("Transcription returned empty text.");
 
@@ -716,18 +719,34 @@ export default function Dashboard() {
 
       setEmbeddingsResult(allResponses);
 
-      // INTERRUPT IF INTERVIEW
-      if (isInterview) {
-        log("Interview detected! Pausing for user input.");
-        setPendingAnalysisId(newAnalysisId);
-        setShowFormatModal(true);
-        setStatus("idle"); // or custom 'waiting-for-user'
-        return;
+      // 5) Extract Gaps Pause
+      setStatus("analyzing-gaps");
+      const gapResp = await fetch("/api/analyze-gaps", {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify({ analysisId: newAnalysisId })
+      });
+      if (!gapResp.ok) {
+        const txt = await gapResp.text();
+        throw new Error(`Analyze gaps failed: ${txt}`);
       }
+      const gapData = await gapResp.json();
+      setAnalysisResult({ ...gapData, isInterview });
+      
+      setPendingAnalysisId(newAnalysisId);
 
-      // 5) Resume flow immediately if not interview
-      log("Not interview, auto-resuming with 'monologue' format");
-      await resumeAnalysisWithFormat("monologue", newAnalysisId);
+      // 6) Render gaps first, then automatically trigger the modal
+      log("Gaps analysis complete. Automatically triggering tone selection.");
+      setStatus("waiting-for-user");
+      
+      setTimeout(() => {
+        if (isInterview) {
+          setShowFormatModal(true);
+        } else {
+          setFormatChoice("monologue");
+          setShowToneModal(true);
+        }
+      }, 800);
 
     } catch (err) {
       console.error("handleAnalyze error", err);
@@ -781,7 +800,7 @@ export default function Dashboard() {
 
 
 
-  const isBusy = ["transcribing", "fetching-web", "creating-analysis", "creating-embeddings", "generating-analysis", "regenerating"].includes(status);
+  const isBusy = ["transcribing", "fetching-web", "creating-analysis", "creating-embeddings", "analyzing-gaps", "generating-analysis", "regenerating"].includes(status);
 
   // Helpers for UI state
   const getAnalyzeButtonText = () => {
@@ -789,6 +808,7 @@ export default function Dashboard() {
     if (status === "fetching-web") return "Fetching Article...";
     if (status === "creating-analysis") return "Analyzing...";
     if (status === "creating-embeddings") return "Embedding...";
+    if (status === "analyzing-gaps") return "Identifying Gaps...";
     if (status === "generating-analysis") return "Generating Insights...";
     return mode === "youtube" ? "Analyze Video" : mode === "blog" ? "Analyze Article" : "Analyze Text";
   };
@@ -802,11 +822,11 @@ export default function Dashboard() {
 
   if (loading || !user) {
     return (
-      <Layout bgClass="bg-[#030014]" headerVariant="dark">
-        <div className="min-h-screen flex items-center justify-center">
+      <Layout bgClass="bg-[#080809]" headerVariant="dark">
+        <div className="min-h-screen flex items-center justify-center bg-[#080809]">
           <div className="text-center">
-            <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-            <p className="text-slate-400 animate-pulse">Checking access...</p>
+            <div className="w-8 h-8 border-2 border-[#10B981] border-t-transparent rounded-none animate-spin mx-auto mb-4"></div>
+            <p className="font-mono text-[10px] tracking-widest text-[#10B981] animate-pulse">_AUTHORIZING_SESSION...</p>
           </div>
         </div>
       </Layout>
@@ -814,36 +834,41 @@ export default function Dashboard() {
   }
 
   return (
-    <Layout bgClass="bg-[#030014]" headerVariant="dark">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <Layout bgClass="bg-[#080809]" headerVariant="dark">
+      <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-12 relative overflow-hidden">
+        {/* Ambient Subtle Glow */}
+        <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-[#10B981]/5 blur-[150px] rounded-full pointer-events-none -z-10"></div>
+        
         {/* Input Section */}
         <div className="max-w-4xl mx-auto mb-16 animate-slide-up">
           <div className="text-center mb-10">
-            <h1 className="text-4xl md:text-5xl font-display font-medium text-white mb-6 tracking-tight">Analyze Content</h1>
-            <p className="text-lg text-slate-400 max-w-2xl mx-auto leading-relaxed">
-              {mode === "youtube" && "Paste a YouTube URL below to discover content gaps, extract insights, and generate optimized scripts."}
-              {mode === "blog" && "Paste a blog or article URL to extract key insights and identify content gaps."}
-              {mode === "text" && "Paste your raw text, story, or draft to analyze structure and find missing elements."}
+            <div className="font-mono text-[10px] text-slate-500 uppercase tracking-[0.2em] mb-4">SYSTEM ENTRY POINT</div>
+            <h1 className="text-3xl md:text-5xl font-display font-bold text-white mb-6 tracking-tighter uppercase italic">Strategic Ingestion</h1>
+            <p className="font-sans text-lg text-slate-400 max-w-2xl mx-auto leading-relaxed">
+              {mode === "youtube" && "Input a YouTube URL to execute gap detection and generate derivative scripts."}
+              {mode === "blog" && "Input an article URL to extract core insights and identify content gaps."}
+              {mode === "text" && "Input raw text or draft material to analyze structure and identify structural flaws."}
             </p>
           </div>
 
           {/* Fallback Info Banner */}
           {showFallbackBanner && (
-            <div className="mb-6 mx-auto max-w-2xl bg-indigo-900/20 border border-indigo-500/30 rounded-xl p-4 flex items-start gap-3 animate-fade-in shadow-sm backdrop-blur-sm">
-              <div className="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center flex-shrink-0 text-indigo-300">
+            <div className="mb-6 mx-auto max-w-2xl bg-[#0b0c15] border border-[#10B981]/30 p-4 flex items-start gap-3 animate-fade-in shadow-sm relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-1 h-full bg-[#10B981]"></div>
+              <div className="w-8 h-8 bg-transparent border border-[#10B981]/20 flex items-center justify-center flex-shrink-0 text-[#10B981]">
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
               <div>
-                <h4 className="font-semibold text-white">Switching to Manual Entry</h4>
-                <p className="text-indigo-200 text-sm mt-1 leading-relaxed">
-                  This website does not allow automatic extraction. We’ve switched you to <strong>Text Mode</strong> — please paste the article text below.
+                <h4 className="font-mono text-xs font-bold text-white uppercase tracking-wider">Switching to Manual Entry</h4>
+                <p className="text-slate-400 text-sm mt-1 leading-relaxed">
+                  Target blocked automatic extraction. <strong>TEXT MODE</strong> initialized — please input raw data below.
                 </p>
               </div>
               <button
                 onClick={() => setShowFallbackBanner(false)}
-                className="ml-auto text-indigo-300 hover:text-white transition-colors"
+                className="ml-auto text-[#10B981]/50 hover:text-[#10B981] transition-colors"
               >
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -853,26 +878,25 @@ export default function Dashboard() {
           )}
 
           <div className="relative group">
-            <div className="absolute -inset-1 bg-gradient-to-r from-indigo-500 to-violet-500 rounded-2xl blur opacity-20 group-hover:opacity-30 transition duration-1000 group-hover:duration-200"></div>
-            <Card className="relative p-0 shadow-2xl shadow-indigo-500/10 border-white/5 bg-white/5 backdrop-blur-md overflow-hidden transition-transform duration-300 hover:scale-[1.01]">
+            <div className="bg-[#111827]/80 backdrop-blur-md border border-white/10 overflow-hidden rounded-none shadow-2xl">
 
               {/* Mode Tabs */}
-              <div className="flex border-b border-white/5 bg-black/20">
+              <div className="flex border-b border-white/5 bg-[#080809]">
                 {[
-                  { id: "youtube", label: "YouTube" },
-                  { id: "blog", label: "Website" },
-                  { id: "text", label: "Text" }
+                  { id: "youtube", label: "YOUTUBE" },
+                  { id: "blog", label: "WEBSITE" },
+                  { id: "text", label: "TEXT" }
                 ].map((m) => (
                   <button
                     key={m.id}
                     onClick={() => {
                       setMode(m.id);
                     }}
-                    className={`flex-1 py-4 text-sm font-medium transition-colors relative ${mode === m.id ? "text-white bg-white/5" : "text-slate-500 hover:text-slate-300 hover:bg-white/5"
+                    className={`flex-1 py-4 text-xs font-mono font-bold uppercase tracking-widest transition-colors relative ${mode === m.id ? "text-white bg-white/5" : "text-slate-600 hover:text-slate-300 hover:bg-white/5"
                       }`}
                   >
                     {m.label}
-                    {mode === m.id && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-gradient-to-r from-indigo-500 to-violet-500"></div>}
+                    {mode === m.id && <div className="absolute top-0 left-0 w-full h-[1px] bg-[#10B981]"></div>}
                   </button>
                 ))}
               </div>
@@ -883,32 +907,28 @@ export default function Dashboard() {
                   {mode === "youtube" && (
                     <>
                       <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                        <svg className="h-5 w-5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                        </svg>
+                        <span className="text-[#10B981] font-mono font-bold text-lg">{'>'}</span>
                       </div>
                       <input
                         type="text"
                         value={videoUrlOrId}
                         onChange={(e) => setVideoUrlOrId(e.target.value)}
                         placeholder="https://youtube.com/watch?v=..."
-                        className="w-full pl-11 pr-4 py-4 rounded-xl border border-white/20 bg-white/5 focus:bg-white/10 focus:ring-2 focus:ring-purple-500/50 text-white placeholder:text-slate-500 text-lg transition-all"
+                        className="w-full pl-11 pr-4 py-4 rounded-none border-0 border-b-2 border-white/10 bg-[#080809] focus:bg-[#10B981]/5 focus:border-[#10B981] focus:outline-none focus:ring-0 text-white font-mono text-sm placeholder:text-slate-600 transition-all shadow-inner"
                       />
                     </>
                   )}
                   {mode === "blog" && (
                     <>
                       <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                        <svg className="h-5 w-5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
+                        <span className="text-[#10B981] font-mono font-bold text-lg">{'>'}</span>
                       </div>
                       <input
                         type="text"
                         value={webUrl}
                         onChange={(e) => setWebUrl(e.target.value)}
                         placeholder="https://yourblog.com/post"
-                        className="w-full pl-11 pr-4 py-4 rounded-xl border border-white/20 bg-white/5 focus:bg-white/10 focus:ring-2 focus:ring-purple-500/50 text-white placeholder:text-slate-500 text-lg transition-all"
+                        className="w-full pl-11 pr-4 py-4 rounded-none border-0 border-b-2 border-white/10 bg-[#080809] focus:bg-[#10B981]/5 focus:border-[#10B981] focus:outline-none focus:ring-0 text-white font-mono text-sm placeholder:text-slate-600 transition-all shadow-inner"
                       />
                     </>
                   )}
@@ -920,8 +940,8 @@ export default function Dashboard() {
                         setUserText(e.target.value);
                         if (showFallbackBanner) setShowFallbackBanner(false);
                       }}
-                      placeholder="Paste transcript or script here..."
-                      className={`w-full p-4 h-32 rounded-xl border border-white/20 bg-white/5 focus:bg-white/10 focus:ring-2 focus:ring-purple-500/50 text-white placeholder:text-slate-500 text-base transition-all resize-none ${isHighlighting ? "ring-2 ring-purple-500 shadow-[0_0_20px_rgba(168,85,247,0.3)] bg-white/10 scale-[1.01]" : ""
+                      placeholder="// PASTE RAW TRANSCRIPT OR TEXT HERE"
+                      className={`w-full p-4 h-32 rounded-none border-0 border-b-2 bg-[#080809] focus:bg-[#10B981]/5 focus:outline-none focus:ring-0 text-white font-mono text-sm placeholder:text-slate-600 transition-all shadow-inner resize-none ${isHighlighting ? "border-purple-500 shadow-[0_0_20px_rgba(168,85,247,0.3)] bg-white/10" : "border-white/10 focus:border-[#10B981]"
                         }`}
                     />
                   )}
@@ -933,68 +953,68 @@ export default function Dashboard() {
                   {/* Left: Platform Selector */}
                   <div className="flex-1 w-full lg:w-auto min-w-0">
                     <div className="text-left mb-2.5 flex items-center justify-between">
-                      <h3 className="text-sm text-gray-400">Where will you publish this content?</h3>
+                      <h3 className="font-mono text-xs font-bold text-slate-500 tracking-wider">TARGET PLATFORM</h3>
                       {entitlementError?.inlineMessage && (
-                        <span className="text-xs font-medium text-amber-500 animate-pulse bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                        <span className="font-mono text-[10px] font-bold text-[#10B981] animate-pulse px-2 py-0.5 border border-[#10B981]/20">
                           {entitlementError.inlineMessage}
                         </span>
                       )}
                     </div>
 
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 w-full">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-0 w-full border border-white/10 p-1 bg-[#080809]">
                       {[
                         {
                           id: "youtube",
-                          label: "YouTube",
+                          label: "YOUTUBE",
                           sub: "Long video",
                           icon: "M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"
                         },
                         {
                           id: "blog",
-                          label: "Blog",
+                          label: "BLOG",
                           sub: "Articles",
                           icon: "M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z",
                           paidOnly: true
                         },
                         {
                           id: "linkedin",
-                          label: "LinkedIn",
+                          label: "LINKEDIN",
                           sub: "Post",
                           icon: "M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"
                         },
                         {
                           id: "x",
-                          label: "Twitter / X",
+                          label: "X (TWITTER)",
                           sub: "Short form",
                           icon: "M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"
                         },
                         {
                           id: "x_thread",
-                          label: "X Thread",
+                          label: "X THREAD",
                           sub: "Deep dive",
                           icon: "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z",
                           paidOnly: true
                         },
                         {
                           id: "linkedin_carousel",
-                          label: "Carousel",
+                          label: "CAROUSEL",
                           sub: "LinkedIn PDF",
                           icon: "M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z",
                           paidOnly: true
                         },
                         {
                           id: "email_newsletter",
-                          label: "Email",
+                          label: "EMAIL",
                           sub: "Newsletter",
                           icon: "M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z",
                           paidOnly: true
                         }
                       ].map((platform) => {
-                        const isLocked = false; // logic update: nothing is locked based on format
+                        const isLocked = false;
                         const isActive = contentTarget === platform.id;
                         return (
 
-                          <div key={platform.id} className="w-full h-full relative">
+                          <div key={platform.id} className="w-full h-full relative border-[0.5px] border-white/5">
                             <Tooltip content={isLocked ? "Available on Standard & Pro" : ""}>
                               <button
                                 onClick={() => {
@@ -1003,32 +1023,33 @@ export default function Dashboard() {
                                     setShowUpgradeBanner(true);
                                     return;
                                   };
-                                  setEntitlementError(null); // Clear error on valid selection
+                                  setEntitlementError(null);
                                   setContentTarget(platform.id)
                                 }}
-                                className={`relative flex flex-col justify-center items-start px-3 py-2 rounded-xl border transition-all duration-200 w-full h-[72px] ${isLocked
-                                  ? "opacity-40 cursor-not-allowed bg-white/5 border-white/5 grayscale"
+                                className={`relative flex flex-col justify-center items-start px-3 py-3 transition-all duration-0 w-full h-full min-h-[72px] ${isLocked
+                                  ? "opacity-40 cursor-not-allowed bg-[#080809] grayscale"
                                   : isActive
-                                    ? "bg-purple-600/10 border-2 border-purple-500 shadow-[0_0_15px_rgba(147,51,234,0.15)] scale-105 z-10"
-                                    : "bg-white/5 border border-white/5 hover:bg-white/10 hover:border-white/10 hover:-translate-y-0.5"
+                                    ? "bg-[#10B981]/10 border border-[#10B981] z-10"
+                                    : "bg-[#080809] hover:bg-white/5"
                                   }`}
                               >
-                                <div className="flex items-center gap-2 mb-1">
-                                  <div className={`p-1 rounded ${isLocked ? "bg-white/10 text-slate-500" :
-                                    isActive ? "bg-purple-600 text-white" : "bg-white/5 text-slate-400 group-hover:text-slate-300"
+                                {isActive && <div className="absolute top-0 left-0 w-1 h-full bg-[#10B981]"></div>}
+                                <div className="flex items-center gap-2 mb-1.5 ml-1">
+                                  <div className={`${isLocked ? "text-slate-500" :
+                                    isActive ? "text-[#10B981]" : "text-slate-400 group-hover:text-slate-300"
                                     }`}>
-                                    <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
                                       <path d={platform.icon} />
                                     </svg>
                                   </div>
-                                  <span className={`text-xs font-semibold whitespace-nowrap ${isLocked ? "text-slate-500" :
-                                    isActive ? "text-white" : "text-slate-300"
+                                  <span className={`text-[11px] font-mono font-bold whitespace-nowrap tracking-wider ${isLocked ? "text-slate-500" :
+                                    isActive ? "text-[#10B981]" : "text-slate-200"
                                     }`}>
                                     {platform.label} {isLocked && "🔒"}
                                   </span>
                                 </div>
-                                <span className={`block text-[10px] pl-0.5 truncate w-full text-left ${isLocked ? "text-slate-600" :
-                                  isActive ? "text-purple-200" : "text-slate-500"
+                                <span className={`block font-mono text-[10px] pl-1.5 truncate w-full text-left uppercase tracking-widest ${isLocked ? "text-slate-600" :
+                                  isActive ? "text-[#0D9488]" : "text-slate-400"
                                   }`}>
                                   {platform.sub}
                                 </span>
@@ -1040,27 +1061,25 @@ export default function Dashboard() {
                     </div>
 
                     {((userPlan === "free") || (userPlan === "standard" && usage.analyses >= 15)) && (
-                      <div className="mt-4 text-center flex flex-col items-center gap-2">
+                      <div className="mt-4 text-center lg:text-left flex flex-col items-start gap-2">
                         {userPlan === "free" && usage.analyses === 2 && (
-                          <span className="text-xs font-medium text-amber-400">
-                            ⚠️ You have 1 free analysis left this month.
+                          <span className="font-mono text-[10px] text-amber-500 uppercase tracking-widest pr-4 border-r border-amber-500/20">
+                            // 1 FREE ANALYSIS REMAINING
                           </span>
                         )}
                         {userPlan === "standard" && usage.analyses === 19 && (
-                          <span className="text-xs font-medium text-amber-400">
-                            ⚠️ You have 1 analysis left this month.
+                          <span className="font-mono text-[10px] text-amber-500 uppercase tracking-widest pr-4 border-r border-amber-500/20">
+                            // 1 ANALYSIS REMAINING
                           </span>
                         )}
-                        <span className="text-xs font-medium px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-slate-400">
-                          {userPlan === "free" ? "Free" : "Standard"} plan: <span className={(userPlan === "free" && usage.analyses >= 3) || (userPlan === "standard" && usage.analyses >= 20) ? "text-red-400" : "text-white"}>
+                        <span className="font-mono text-[10px] text-slate-500 uppercase tracking-widest">
+                          [{userPlan === "free" ? "FREE" : "STANDARD"}]: <span className={(userPlan === "free" && usage.analyses >= 3) || (userPlan === "standard" && usage.analyses >= 20) ? "text-red-500" : "text-white"}>
                             {Math.min(usage.analyses, userPlan === "standard" ? 20 : 3)}
-                          </span>/{userPlan === "standard" ? 20 : 3} analyses used this month
+                          </span>/{userPlan === "standard" ? 20 : 3} USED
                         </span>
                       </div>
                     )}
                   </div>
-
-                  {/* Right: Analyze Button */}
 
                   {/* Right: Analyze Button */}
                   <div className="flex-shrink-0 w-full lg:w-auto flex flex-col items-center lg:items-end">
@@ -1069,23 +1088,18 @@ export default function Dashboard() {
                       isLoading={isBusy}
                       disabled={isInputEmpty() || ((userPlan === "free" && usage.analyses >= 3) || (userPlan === "standard" && usage.analyses >= 20))}
                       size="xl"
-                      variant="gradient"
+                      variant="primary"
                       title={((userPlan === "free" && usage.analyses >= 3) || (userPlan === "standard" && usage.analyses >= 20)) ? "Monthly limit reached" : isInputEmpty() ? "Paste a link to analyze" : ""}
-                      className={`w-full lg:w-auto h-[72px] rounded-xl font-bold tracking-wide px-8 text-lg transition-all duration-300 shadow-lg ${((userPlan === "free" && usage.analyses >= 3) || (userPlan === "standard" && usage.analyses >= 20))
-                        ? "!bg-slate-800 !text-slate-500 !cursor-not-allowed !shadow-none opacity-50"
-                        : "!bg-gradient-to-r !from-purple-600 !to-purple-700 hover:scale-105 hover:!from-purple-500 hover:!to-purple-600 shadow-purple-900/20"
+                      className={`w-full lg:w-auto h-[72px] rounded-none border border-[#10B981] font-mono font-bold tracking-widest text-[12px] uppercase px-8 transition-all ${((userPlan === "free" && usage.analyses >= 3) || (userPlan === "standard" && usage.analyses >= 20))
+                        ? "!bg-slate-900 !text-slate-600 !border-slate-800 !cursor-not-allowed opacity-50"
+                        : "!bg-[#10B981] !text-[#080809] hover:!bg-[#0D9488] hover:!border-[#0D9488] shadow-none"
                         }`}
                     >
                       <div className="flex items-center gap-2">
-                        {getAnalyzeButtonText()}
-                        {!((userPlan === "free" && usage.analyses >= 3) || (userPlan === "standard" && usage.analyses >= 20)) && (
-                          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        {isBusy ? <span className="animate-pulse">_PROCESSING</span> : getAnalyzeButtonText()}
+                        {!((userPlan === "free" && usage.analyses >= 3) || (userPlan === "standard" && usage.analyses >= 20)) && !isBusy && (
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                          </svg>
-                        )}
-                        {((userPlan === "free" && usage.analyses >= 3) || (userPlan === "standard" && usage.analyses >= 20)) && (
-                          <svg className="w-5 h-5 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                           </svg>
                         )}
                       </div>
@@ -1093,15 +1107,15 @@ export default function Dashboard() {
 
                     {((userPlan === "free" && usage.analyses >= 3) || (userPlan === "standard" && usage.analyses >= 20)) && (
                       <div className="mt-3 text-center lg:text-right">
-                        <span className="text-xs font-medium text-amber-500/90 tracking-wide">
-                          {userPlan === "free" ? "Free" : "Standard"} plan limit reached ({userPlan === "standard" ? "20/20" : "3/3"}). <Link href="/pricing" className="underline hover:text-amber-400">Upgrade to continue</Link>
+                         <span className="font-mono text-[10px] text-amber-500 tracking-widest uppercase">
+                          LIMIT REACHED. <Link href="/pricing" className="underline hover:text-[#10B981] transition-colors ml-1">UPGRADE</Link>
                         </span>
                       </div>
                     )}
                   </div>
                 </div>
               </div>
-            </Card>
+            </div>
           </div>
 
           <p className="text-center text-xs text-slate-500 mt-4 opacity-60 flex items-center justify-center gap-1.5">
@@ -1117,61 +1131,62 @@ export default function Dashboard() {
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           {/* Left Column: Transcript */}
-          <div className="lg:col-span-4 space-y-6">
-            <Card className={`flex flex-col shadow-secondary border-white/5 bg-white/5 backdrop-blur-md transition-all duration-300 ${isTranscriptExpanded ? "h-[600px]" : "h-auto"}`}>
+          <div className="lg:col-span-4 min-h-[500px] max-h-[800px] flex flex-col">
+            <div className={`flex flex-col bg-[#111827]/80 backdrop-blur-md border border-white/10 rounded-none overflow-hidden transition-all duration-0 ${isTranscriptExpanded ? "h-full" : "h-auto"}`}>
               <div
-                className="p-4 border-b border-white/5 bg-black/20 flex justify-between items-center cursor-pointer hover:bg-white/5 transition-colors"
+                className="p-4 border-b border-white/10 bg-[#080809] flex justify-between items-center cursor-pointer hover:bg-white/5 transition-colors"
                 onClick={() => setIsTranscriptExpanded(!isTranscriptExpanded)}
               >
                 <div className="flex items-center gap-2">
-                  <div className={`transition-transform duration-200 ${isTranscriptExpanded ? "rotate-90" : ""}`}>
-                    <svg className="w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                  <div className={`text-[#10B981] transition-transform duration-0 ${isTranscriptExpanded ? "rotate-90" : ""}`}>
+                    <span className="font-mono">{'>'}</span>
                   </div>
-                  <h3 className="font-semibold text-white flex items-center gap-2">
-                    {mode === 'youtube' ? (
-                      <svg className="w-4 h-4 text-red-500" fill="currentColor" viewBox="0 0 24 24"><path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z" /></svg>
-                    ) : mode === 'blog' ? (
-                      <svg className="w-4 h-4 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" /></svg>
-                    ) : (
-                      <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                    )}
-                    Transcript
+                  <h3 className="font-mono text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                    RAW TRANSCRIPT DATA
                   </h3>
                 </div>
-                <span className="text-xs font-medium px-2.5 py-1 bg-white/5 border border-white/10 text-slate-400 rounded-md shadow-sm">
-                  {transcript.length > 0 ? `${transcript.length} chars` : "Empty"}
+                <span className="font-mono text-[10px] uppercase px-2 py-0.5 border border-[#10B981]/20 text-[#10B981] tracking-widest">
+                  {transcript.length > 0 ? `${transcript.length} BYTES` : "EMPTY"}
                 </span>
               </div>
 
               {isTranscriptExpanded && (
                 status === "transcribing" && !transcript ? (
-                  <div className="flex-1 p-6 space-y-4 animate-pulse bg-white/5">
-                    {[...Array(8)].map((_, i) => (
-                      <div key={i} className={`h-2 bg-white/10 rounded ${i % 2 === 0 ? 'w-full' : 'w-3/4'}`}></div>
+                  <div className="flex-1 p-6 space-y-4 bg-transparent border-l border-dashed border-white/10 ml-4 mt-4">
+                    {[...Array(6)].map((_, i) => (
+                      <div key={i} className={`h-1 bg-[#10B981]/20 ${i % 2 === 0 ? 'w-full' : 'w-3/4'}`}></div>
                     ))}
+                    <p className="font-mono text-[10px] text-[#10B981] animate-pulse mt-4">_EXTRACTING_AUDIO_DATA...</p>
                   </div>
                 ) : (
-                  <textarea
-                    value={transcript}
-                    readOnly
-                    className="flex-1 w-full p-6 resize-none outline-none text-sm leading-loose text-slate-400 font-mono bg-transparent focus:bg-white/5 transition-colors placeholder:text-slate-600"
-                    placeholder="Transcript will appear here after analysis..."
-                  />
+                  <div className="flex-1 relative flex">
+                    <div className="w-6 border-r border-dashed border-white/10 flex-shrink-0 bg-[#080809]/50"></div>
+                    <textarea
+                      value={transcript}
+                      readOnly
+                      className="flex-1 w-full p-4 resize-none outline-none text-sm leading-relaxed text-slate-300 font-mono bg-transparent focus:bg-white/5 transition-colors placeholder:text-slate-600"
+                      placeholder="// SYSTEM IDLE. NO DATA INGESTED."
+                    />
+                  </div>
                 )
               )}
-            </Card>
+            </div>
           </div>
 
           {/* Right Column: Analysis Results */}
-          <div ref={resultsRef} className="lg:col-span-8 space-y-6">
-            <Card className="p-8 min-h-[600px] shadow-secondary border-white/5 bg-white/5 backdrop-blur-md">
-              <div className="flex items-center justify-between mb-8">
-                <h2 className="text-2xl font-bold font-display text-white tracking-tight">Analysis Results</h2>
+          <div ref={resultsRef} className="lg:col-span-8 min-h-[500px] max-h-[800px] flex flex-col">
+            <div className="p-8 h-full flex flex-col bg-[#111827]/80 backdrop-blur-md border border-white/10 rounded-none relative">
+              
+              <div className="flex items-start justify-between mb-8 pb-4 border-b border-dashed border-white/10">
+                <div>
+                  <div className="font-mono text-[10px] text-slate-500 uppercase tracking-widest mb-2">OUTPUT LOG</div>
+                  <h2 className="text-2xl font-display font-bold text-white tracking-tighter uppercase italic">Intelligence Engine</h2>
+                </div>
                 <div className="flex gap-3 text-sm">
-                  <div className={`px-3 py-1 rounded-full border flex items-center gap-2 ${status === 'done' ? 'bg-green-900/20 text-green-400 border-green-500/30' : 'bg-white/5 text-slate-400 border-white/10'
+                  <div className={`px-3 py-1 border flex items-center gap-2 font-mono text-[10px] uppercase tracking-widest ${status === 'done' ? 'bg-[#10B981]/10 text-[#10B981] border-[#10B981]' : 'bg-[#080809] text-slate-500 border-white/10'
                     }`}>
-                    <span className={`w-2 h-2 rounded-full ${status === 'done' ? 'bg-green-500' : 'bg-slate-400 animate-pulse'}`}></span>
-                    <span className="font-medium capitalize">{status === 'idle' ? 'Ready' : status.replace('-', ' ')}</span>
+                    <span className={`w-1.5 h-1.5 ${status === 'done' ? 'bg-[#10B981]' : 'bg-slate-500 animate-pulse'}`}></span>
+                    <span>{status === 'idle' ? 'STANDBY' : status.replace('-', '_')}</span>
                   </div>
                 </div>
               </div>
@@ -1179,29 +1194,23 @@ export default function Dashboard() {
               {isBusy && !analysisResult && !generatedScript ? (
                 <AnalysisLoader status={status} />
               ) : !analysisResult && !generatedScript ? (
-                <div className="h-96 flex flex-col items-center justify-center text-slate-500 border-2 border-dashed border-white/5 rounded-2xl bg-white/5 hover:bg-white/10 transition-colors">
-                  <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mb-6 shadow-sm border border-white/5">
-                    <svg className="w-10 h-10 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-                    </svg>
+                <div className="h-96 flex flex-col items-center justify-center text-slate-500 border border-dashed border-white/10 bg-[#080809] hover:bg-white/5 transition-colors group">
+                  <div className="w-12 h-12 flex items-center justify-center mb-4 text-[#10B981]/30 group-hover:text-[#10B981] transition-colors border border-white/5 group-hover:border-[#10B981]/50 bg-[#111827]">
+                     <span className="font-mono text-xl">{'>_'}</span>
                   </div>
-                  <p className="text-xl font-medium text-slate-400 mb-2">Ready to analyze</p>
-                  <p className="text-slate-600">Enter a video URL above to start</p>
+                  <p className="font-mono text-xs text-[#10B981] mb-1 tracking-widest">SYSTEM AWAITING INPUT</p>
+                  <p className="font-mono text-[10px] text-slate-600 uppercase">Input target above to initiate deep scan.</p>
                 </div>
               ) : (
-                <div className="space-y-10 animate-slide-up">
+                <div className="flex flex-col flex-1 min-h-0 animate-slide-up">
                   {/* Summary */}
                   {analysisResult?.summary && (
-                    <div className="prose prose-invert max-w-none">
-                      <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center border border-indigo-500/20">
-                          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                        </div>
-                        Summary of This Content
+                    <div className="shrink-0 mb-8">
+                      <h3 className="font-mono text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2 mb-3">
+                        <span className="text-[#10B981]">{'>'}</span> SYSTEM SUMMARY
                       </h3>
-                      <div className="bg-white/5 p-6 rounded-2xl border border-white/10 text-slate-300 leading-relaxed shadow-sm">
+                      <div className="bg-[#080809] p-6 border-l-2 border-[#10B981] border-y border-r border-white/5 text-slate-200 leading-relaxed font-sans text-base shadow-inner relative overflow-hidden">
+                        <div className="absolute top-0 right-0 w-16 h-16 bg-[#10B981]/5 blur-2xl"></div>
                         {analysisResult.summary}
                       </div>
                     </div>
@@ -1209,46 +1218,35 @@ export default function Dashboard() {
 
                   {/* Gaps */}
                   {analysisResult?.gaps && (
-                    <div>
-                      <h3 className="text-lg font-semibold text-white mb-5 flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-lg bg-red-500/20 text-red-400 flex items-center justify-center border border-red-500/20">
-                          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 0l-3-3m3 3l3-3M12 2a9 9 0 110 18 9 9 0 010-18z" />
-                          </svg>
-                        </div>
-                        Identified Content Gaps
+                    <div className="flex flex-col flex-1 min-h-0 pb-4">
+                      <h3 className="shrink-0 font-mono text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2 mb-3">
+                        <span className="text-red-500">{'>'}</span> IDENTIFIED CONTENT GAPS
                       </h3>
-                      <div className="grid gap-4">
+                      <div className="flex flex-col gap-0 border border-white/5 bg-[#080809] flex-1 min-h-0 overflow-y-auto custom-scrollbar">
                         {analysisResult.gaps.map((g, i) => {
-                          const priority = i === 0 ? "Critical" : i === 1 ? "Medium" : "Minor";
-                          const priorityColor = i === 0 ? "bg-red-900/30 text-red-300 border-red-500/30" : i === 1 ? "bg-orange-900/30 text-orange-300 border-orange-500/30" : "bg-blue-900/30 text-blue-300 border-blue-500/30";
-                          const icon = i === 0 ? (
-                            <svg className="w-4 h-4 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-                          ) : i === 1 ? (
-                            <svg className="w-4 h-4 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
-                          ) : (
-                            <svg className="w-4 h-4 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                          );
+                          const priority = i === 0 ? "CRITICAL" : i === 1 ? "MEDIUM" : "MINOR";
+                          const priorityColor = i === 0 ? "text-red-500 border-red-500/30 bg-red-500/10" : i === 1 ? "text-orange-500 border-orange-500/30 bg-orange-500/10" : "text-[#10B981] border-[#10B981]/30 bg-[#10B981]/10";
+                          const numColor = i === 0 ? "text-red-500" : i === 1 ? "text-orange-500" : "text-[#10B981]";
 
                           return (
-                            <div key={i} className="bg-white/5 p-6 rounded-xl border border-white/5 shadow-sm hover:border-indigo-500/30 hover:bg-white/10 hover:-translate-y-1 transition-all duration-200 group relative overflow-hidden">
-                              <div className="absolute top-0 left-0 w-1 h-full bg-white/10 group-hover:bg-indigo-500 transition-all"></div>
+                            <div key={i} className={`p-6 border-b border-dashed border-white/10 hover:bg-white/5 transition-colors group relative ${i === analysisResult.gaps.length - 1 ? 'border-b-0' : ''}`}>
+                              <div className={`absolute top-0 left-0 w-0.5 h-full transition-all opacity-0 group-hover:opacity-100 ${i === 0 ? 'bg-red-500' : i === 1 ? 'bg-orange-500' : 'bg-[#10B981]'}`}></div>
+                              
                               <div className="flex items-start gap-4">
-                                <div className="w-11 h-11 rounded-full bg-black/20 text-slate-400 flex items-center justify-center flex-shrink-0 text-lg font-bold mt-0.5 border-2 border-white/5 group-hover:bg-indigo-600 group-hover:text-white group-hover:border-indigo-600 transition-colors shadow-sm">
-                                  {i + 1}
+                                <div className={`font-mono text-base font-bold ${numColor} mt-0.5 w-6`}>
+                                  [{String(i + 1).padStart(2, '0')}]
                                 </div>
                                 <div className="flex-1">
                                   <div className="flex items-center justify-between mb-2">
-                                    <h4 className="font-semibold text-white group-hover:text-indigo-300 transition-colors text-lg">
-                                      {g.title || `Gap ${i + 1}`}
+                                    <h4 className="font-sans font-bold text-white group-hover:text-slate-100 transition-colors text-lg uppercase tracking-tight">
+                                      {g.title || `GAP DETECTED ${i + 1}`}
                                     </h4>
-                                    <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border ${priorityColor} flex items-center gap-1.5`}>
-                                      {icon}
+                                    <span className={`font-mono text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 border ${priorityColor}`}>
                                       {priority}
                                     </span>
                                   </div>
                                   {g.suggestion && (
-                                    <p className="text-slate-400 text-sm leading-relaxed">{g.suggestion}</p>
+                                    <p className="text-slate-300 text-base leading-relaxed mt-2">{g.suggestion}</p>
                                   )}
                                 </div>
                               </div>
@@ -1256,224 +1254,335 @@ export default function Dashboard() {
                           );
                         })}
                       </div>
-                    </div>
-                  )}
 
-                  {/* Suggested Script */}
-                  {(analysisResult?.suggested_script || analysisResult?.suggestedScript || generatedScript || (isBusy && analysisResult)) && (
-                    <div className="pt-8 border-t border-white/10">
-                      <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-lg bg-green-500/20 text-green-400 flex items-center justify-center border border-green-500/20">
-                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
+                      {/* Manual Tone Trigger CTA */}
+                      {(!generatedScript && !isBusy && analysisResult) && (
+                        <div className="mt-6 pt-6 border-t border-dashed border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4 animate-fade-in">
+                          <div>
+                            <h4 className="font-mono text-sm font-bold text-white uppercase tracking-tight">Gaps Analysis Completed</h4>
+                            <p className="text-xs font-sans text-slate-400 mt-1">Review the gaps above. Awaiting narrative tone selection to synthesize derivative output.</p>
                           </div>
-                          Derivative Script (Optional)
-                        </h3>
-                        {(isBusy && !generatedScript) && (
-                          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 animate-pulse">
-                            Generating...
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-4 mb-4">
-                        {/* Platform Selector */}
-                        <div className="relative group">
-                          <select
-                            value={selectedPlatform || contentTarget}
-                            onChange={(e) => handleRegenerateScript(e.target.value)}
-                            disabled={isBusy}
-                            className="appearance-none bg-white/5 border border-white/20 rounded-lg py-2 pl-3 pr-10 text-sm font-medium text-white focus:outline-none focus:border-indigo-500 hover:border-indigo-500 hover:bg-white/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm cursor-pointer"
+                          <button
+                            onClick={() => {
+                              if (analysisResult.isInterview) {
+                                setShowFormatModal(true);
+                              } else {
+                                setFormatChoice("monologue");
+                                setShowToneModal(true);
+                              }
+                            }}
+                            className="group bg-[#10B981] hover:bg-[#059669] text-black font-mono font-bold text-xs px-6 py-3 uppercase tracking-widest transition-all w-full sm:w-auto relative overflow-hidden"
                           >
-                            <option value="youtube" className="bg-[#0b0c15] text-white">YouTube</option>
-                            <option value="blog" className="bg-[#0b0c15] text-white">Blog</option>
-                            <option value="linkedin" className="bg-[#0b0c15] text-white">LinkedIn (Post)</option>
-                            <option value="linkedin_carousel" className="bg-[#0b0c15] text-white">LinkedIn (Carousel)</option>
-                            <option value="x" className="bg-[#0b0c15] text-white">X (Twitter)</option>
-                            <option value="x_thread" className="bg-[#0b0c15] text-white">X (Thread)</option>
-                            <option value="email_newsletter" className="bg-[#0b0c15] text-white">Email Newsletter</option>
-                          </select>
-                          <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 group-hover:text-indigo-400 transition-colors">
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                          </div>
+                            <div className="absolute inset-x-0 top-0 h-px bg-white/50"></div>
+                            <span className="flex items-center gap-2 justify-center">
+                              SELECT TONE & GENERATE
+                              <span className="relative flex h-2 w-2">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-black opacity-40"></span>
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-black"></span>
+                              </span>
+                            </span>
+                          </button>
                         </div>
+                      )}
 
-                        <p className="text-xs text-slate-500 ml-1">
-                          Refine formatting without changing insights.
-                        </p>
-                      </div>
-                      <div className="bg-[#0b0c15] rounded-2xl border border-white/10 font-mono text-sm text-slate-300 shadow-inner relative overflow-hidden min-h-[200px]">
-                        <div className="absolute top-0 left-0 right-0 h-10 bg-[#0b0c15] z-10 flex items-center px-4 justify-between border-b border-white/5">
-                          <span className="text-[10px] uppercase tracking-widest font-bold text-slate-500">AI-Generated Script</span>
-                          <div className="flex items-center gap-2">
-                            {/* Regenerate Button */}
-                            <div className="relative">
-                              <Tooltip content="">
-                                <Button
-                                  size="sm"
-                                  variant="secondary"
-                                  className="!bg-white/5 !border !border-white/10 !text-slate-300 hover:!text-white hover:!bg-indigo-600 hover:!border-indigo-600 h-8 px-3 gap-2 flex items-center justify-center transition-all group shadow-sm bg-transparent"
-                                  onClick={() => handleRegenerateScript(selectedPlatform || contentTarget)}
-                                  disabled={
-                                    isBusy ||
-                                    (!generatedScript && !analysisResult?.suggested_script)
-                                  }
-                                  title="Regenerate script"
-                                >
-                                  <svg className={`w-4 h-4 text-indigo-400 group-hover:text-white transition-colors ${status === 'regenerating' ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                                  </svg>
-                                  <span className="font-medium">Regenerate</span>
-                                </Button>
-                              </Tooltip>
-                            </div>
-
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              className="bg-transparent border-none text-slate-400 hover:text-white hover:bg-white/10 h-7 text-xs"
-                              onClick={() => {
-                                navigator.clipboard.writeText(analysisResult?.suggested_script || generatedScript || "");
-                                setScriptCopied(true);
-                                setTimeout(() => setScriptCopied(false), 1200);
-                              }}
-                              disabled={!generatedScript && !analysisResult?.suggested_script}
-                            >
-                              {scriptCopied ? (
-                                <div className="flex items-center gap-1.5 text-green-400">
-                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                                  <span className="font-semibold">Copied</span>
-                                </div>
-                              ) : (
-                                <div className="flex items-center gap-1.5">
-                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" /></svg>
-                                  Copy
-                                </div>
-                              )}
-                            </Button>
-                          </div>
-                        </div>
-                        <div className="p-6 pt-14 whitespace-pre-wrap max-h-[500px] overflow-auto">
-                          {generatedScript || analysisResult?.suggested_script || analysisResult?.suggestedScript ? (
-                            <>
-                              {generatedScript || analysisResult?.suggested_script || analysisResult?.suggestedScript}
-                              {isBusy && (
-                                <span className="inline-block w-2 h-4 ml-1 bg-indigo-500 animate-pulse align-middle"></span>
-                              )}
-                            </>
-                          ) : (
-                            <div className="flex flex-col items-center justify-center h-40 space-y-4 opacity-80">
-                              <div className="w-48 h-1 bg-white/10 rounded-full overflow-hidden">
-                                <div
-                                  className="h-full bg-gradient-to-r from-indigo-500 to-indigo-400 rounded-full transition-all duration-300 ease-out"
-                                  style={{ width: `${Math.round(scriptProgress)}%` }}
-                                ></div>
-                              </div>
-                              <p className="text-xs font-mono text-indigo-300">Drafting script... {Math.round(scriptProgress)}%</p>
-                              <p className="text-xs text-indigo-300 mt-3 animate-pulse font-medium tracking-wide text-center">
-                                {helperMessages[helperMessageIndex]}
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                      </div>
                     </div>
                   )}
 
-                  {/* Titles & Keywords */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-2">
-                    {/* Titles */}
-                    {analysisResult?.titles && (
-                      <div>
-                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">Title Suggestions</h3>
-                        <ul className="space-y-3">
-                          {analysisResult.titles.map((t, i) => (
-                            <li key={i} className="flex items-start gap-3 text-sm text-slate-300 bg-white/5 p-3 rounded-lg border border-white/5 shadow-sm hover:border-indigo-500/30 transition-colors group">
-                              <span className="text-indigo-400 group-hover:text-indigo-300 mt-0.5 font-bold transition-colors">•</span>
-                              {t}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
 
-                    {/* Keywords */}
-                    {analysisResult?.keywords && (
-                      <div>
-                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">Keyword Opportunities</h3>
-                        <div className="flex flex-wrap gap-2">
-                          {(Array.isArray(analysisResult.keywords) ? analysisResult.keywords : []).map((k, i) => (
-                            <span key={i} className="px-3 py-1.5 rounded-lg bg-indigo-500/10 text-indigo-300 text-xs font-medium border border-indigo-500/20 hover:bg-indigo-500/20 transition-colors cursor-default">
-                              {k}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
 
 
                 </div>
               )}
-            </Card>
-
-            {/* Actions Footer */}
-            <div className="flex gap-4 flex-wrap justify-end">
-              <Link href="/history">
-                <Button variant="ghost" className="text-slate-400 hover:text-white hover:bg-white/5">View History</Button>
-              </Link>
             </div>
 
-            {/* Feedback Box - Only shown when analysis is done */}
-            {status === "done" && (analysisResult || generatedScript) && (
-              <FeedbackBox />
-            )}
           </div>
+        </div>
+
+        {/* Suggested Script - Full Width below the grid */}
+        {(analysisResult?.suggested_script || analysisResult?.suggestedScript || generatedScript || (isBusy && analysisResult)) && (
+          <div className="mt-8 p-8 bg-[#111827]/80 backdrop-blur-md border border-white/10 rounded-none relative animate-slide-up">
+            <div className="flex items-end justify-between mb-4">
+              <div>
+                <h3 className="font-mono text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2 mb-1">
+                  <span className="text-[#0D9488]">{'>'}</span> DERIVATIVE SCRIPT // OPTIONAL
+                </h3>
+                <p className="text-[10px] font-mono text-slate-500">Refine parameters without discarding structural insights.</p>
+              </div>
+              {(isBusy && !generatedScript) && (
+                <span className="font-mono text-[9px] font-bold px-2 py-1 bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/30 animate-pulse tracking-widest uppercase">
+                  GENERATING SEQUENCE...
+                </span>
+              )}
+            </div>
+            
+            <div className="flex items-center gap-4 mb-4">
+              {/* Platform Selector */}
+              <div className="relative group">
+                <select
+                  value={selectedPlatform || contentTarget}
+                  onChange={(e) => handleRegenerateScript(e.target.value)}
+                  disabled={isBusy}
+                  className="appearance-none bg-[#080809] border border-white/20 rounded-none py-2 pl-3 pr-10 font-mono text-xs font-bold tracking-widest uppercase text-white focus:outline-none focus:border-[#10B981] hover:border-white/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  <option value="youtube">YOUTUBE</option>
+                  <option value="blog">BLOG</option>
+                  <option value="linkedin">LINKEDIN POST</option>
+                  <option value="linkedin_carousel">LINKEDIN CAROUSEL</option>
+                  <option value="x">X (TWITTER)</option>
+                  <option value="x_thread">X (THREAD)</option>
+                  <option value="email_newsletter">EMAIL NEWSLETTER</option>
+                </select>
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 group-hover:text-white transition-colors">
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-[#080809] border border-white/10 shadow-inner relative overflow-hidden min-h-[200px]">
+              <div className="absolute top-0 left-0 right-0 h-10 bg-[#080809] z-10 flex items-center px-4 justify-between border-b border-dashed border-white/10">
+                <span className="font-mono text-[9px] uppercase tracking-widest font-bold text-slate-500">AI-GENERATED OUTPUT</span>
+                <div className="flex items-center gap-2">
+                  {/* Regenerate Button */}
+                  <Tooltip content="">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      className="!rounded-none !bg-transparent !border !border-white/10 !text-slate-400 hover:!text-[#10B981] hover:!border-[#10B981]/50 h-7 px-3 gap-2 flex items-center justify-center transition-all group shadow-none"
+                      onClick={() => handleRegenerateScript(selectedPlatform || contentTarget)}
+                      disabled={isBusy || (!generatedScript && !analysisResult?.suggested_script)}
+                      title="Regenerate script"
+                    >
+                      <svg className={`w-3.5 h-3.5 group-hover:text-[#10B981] transition-colors ${status === 'regenerating' ? 'animate-spin text-[#10B981]' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      <span className="font-mono text-[9px] uppercase tracking-widest font-bold">REGENERATE</span>
+                    </Button>
+                  </Tooltip>
+
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="!rounded-none !bg-transparent !border !border-white/10 !text-slate-400 hover:!text-white hover:!bg-white/10 h-7 px-3 text-[9px] font-mono font-bold tracking-widest uppercase shadow-none"
+                    onClick={() => {
+                      navigator.clipboard.writeText(analysisResult?.suggested_script || generatedScript || "");
+                      setScriptCopied(true);
+                      setTimeout(() => setScriptCopied(false), 1200);
+                    }}
+                    disabled={!generatedScript && !analysisResult?.suggested_script}
+                  >
+                    {scriptCopied ? (
+                      <div className="flex items-center gap-1.5 text-[#10B981]">
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                        <span>COPIED</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5">
+                        <span>COPY DATA</span>
+                      </div>
+                    )}
+                  </Button>
+                </div>
+              </div>
+              <div className="p-6 pt-14 whitespace-pre-wrap max-h-[500px] overflow-auto">
+                {generatedScript || analysisResult?.suggested_script || analysisResult?.suggestedScript ? (
+                  <div className="font-mono text-sm leading-relaxed text-slate-200">
+                    {generatedScript || analysisResult?.suggested_script || analysisResult?.suggestedScript}
+                    {isBusy && (
+                      <span className="inline-block w-2 h-4 ml-1 bg-[#10B981] animate-blink align-middle"></span>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-40 space-y-4 opacity-80">
+                    <div className="w-48 h-1 bg-[#080809] border border-white/10 rounded-none overflow-hidden relative">
+                      <div
+                        className="absolute top-0 left-0 h-full bg-[#10B981] transition-all duration-300 ease-out"
+                        style={{ width: `${Math.round(scriptProgress)}%` }}
+                      ></div>
+                    </div>
+                    <p className="text-[10px] font-mono text-[#10B981] tracking-widest uppercase">COMPUTING SCRIPT... {Math.round(scriptProgress)}%</p>
+                    <p className="text-[9px] font-mono text-slate-500 mt-3 font-bold tracking-widest uppercase text-center">
+                      {helperMessages[helperMessageIndex]?.toUpperCase() || "INITIALIZING..."}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Titles & Keywords - Full Width below Script */}
+        {(analysisResult?.titles || analysisResult?.keywords) && (
+          <div className="mt-8 p-8 bg-[#111827]/80 backdrop-blur-md border border-white/10 rounded-none relative animate-slide-up">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              {/* Titles */}
+              {analysisResult?.titles && (
+                <div>
+                  <h3 className="font-mono text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2 mb-3">
+                     <span className="text-purple-500">{'>'}</span> STRATEGIC TITLES
+                  </h3>
+                  <ul className="space-y-0 border border-white/5 bg-[#080809]">
+                    {analysisResult.titles.map((t, i) => (
+                      <li key={i} className="flex items-start gap-3 text-sm font-mono text-slate-200 p-3 border-b border-dashed border-white/5 hover:bg-white/5 transition-colors group">
+                        <span className="text-slate-600 group-hover:text-purple-500 mt-0.5 font-bold transition-colors">[{i + 1}]</span>
+                        {t}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Keywords */}
+              {analysisResult?.keywords && (
+                <div>
+                  <h3 className="font-mono text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2 mb-3">
+                     <span className="text-pink-500">{'>'}</span> INDEXED KEYWORDS
+                  </h3>
+                  <div className="flex flex-wrap gap-2">
+                    {(Array.isArray(analysisResult.keywords) ? analysisResult.keywords : []).map((k, i) => (
+                      <span key={i} className="px-2 py-1 border border-white/10 text-slate-300 font-mono text-[11px] uppercase tracking-widest hover:border-pink-500/50 hover:text-pink-400 transition-colors cursor-default bg-[#080809]">
+                        {k}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className="mt-12 flex flex-col gap-6 animate-slide-up">
+          <div className="flex justify-end">
+            <Link href="/history">
+              <Button variant="ghost" className="text-slate-400 hover:text-white hover:bg-white/5 font-mono text-xs tracking-widest uppercase">View History</Button>
+            </Link>
+          </div>
+
+          {/* Feedback Box - Only shown when analysis is done */}
+          {status === "done" && (analysisResult || generatedScript) && (
+            <div className="w-full flex justify-center mt-2 pb-8">
+              <div className="w-full max-w-2xl">
+                <FeedbackBox />
+              </div>
+            </div>
+          )}
         </div>
       </div >
       {/* Format Selection Modal */}
       {
         showFormatModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-            <div className="bg-[#0b0c15] border border-white/10 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-scale-in" onClick={(e) => e.stopPropagation()}>
-              <div className="p-6">
-                <div className="flex items-center gap-4 mb-4 text-indigo-400">
-                  <div className="w-10 h-10 rounded-full bg-indigo-900/20 flex items-center justify-center flex-shrink-0">
-                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z" />
-                    </svg>
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#080809]/90 backdrop-blur-md animate-fade-in">
+            <div className="bg-[#111827] border border-[#10B981] rounded-none max-w-md w-full overflow-hidden animate-scale-in relative shadow-[0_0_50px_rgba(16,185,129,0.1)]" onClick={(e) => e.stopPropagation()}>
+              <div className="absolute top-0 left-0 w-1 h-full bg-[#10B981]"></div>
+              <div className="p-8">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-8 h-8 flex items-center justify-center flex-shrink-0 text-[#10B981]">
+                    <span className="font-mono text-xl font-bold">{'>_'}</span>
                   </div>
-                  <h3 className="text-xl font-bold text-white">Interview Format Detected</h3>
+                  <div>
+                    <span className="font-mono text-[9px] uppercase tracking-widest text-slate-500 font-bold">SYSTEM ALERT</span>
+                    <h3 className="text-xl font-display font-bold text-white tracking-tight uppercase italic">Interview Detected</h3>
+                  </div>
                 </div>
-                <p className="text-slate-400 mb-6 leading-relaxed">
-                  We detected that this content is an interview. How would you like the upgraded script to be written?
+                <p className="text-slate-400 mb-8 leading-relaxed font-sans text-sm">
+                  The ingested source data exhibits an interview/multi-speaker structure. Select processing protocol:
                 </p>
 
-                <div className="grid gap-3 mb-6">
+                <div className="grid gap-0 border border-white/10 p-1 bg-[#080809]">
                   <button
                     onClick={() => resumeAnalysisWithFormat("preserve")}
-                    className="flex items-start gap-3 p-4 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 hover:border-indigo-500/50 transition-all text-left group"
+                    className="flex items-start gap-4 p-4 border border-white/5 bg-[#080809] hover:bg-[#10B981]/5 hover:border-[#10B981]/50 transition-all text-left group relative"
                   >
-                    <div className="mt-0.5 w-4 h-4 rounded-full border border-slate-500 group-hover:border-indigo-400 flex items-center justify-center">
-                      <div className="w-2 h-2 rounded-full bg-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    <div className="absolute top-0 left-0 w-0 h-full bg-[#10B981] group-hover:w-1 transition-all"></div>
+                    <div className="mt-0.5 w-4 h-4 border border-slate-600 group-hover:border-[#10B981] flex items-center justify-center rounded-none">
+                      <div className="w-2 h-2 bg-[#10B981] opacity-0 group-hover:opacity-100 transition-opacity"></div>
                     </div>
                     <div>
-                      <h4 className="font-semibold text-white group-hover:text-indigo-300">Preserve Interview (Q&A)</h4>
-                      <p className="text-xs text-slate-500 mt-1">Keep speaker turns and dialogue structure, essentially upgrading the interview itself.</p>
+                      <h4 className="font-mono font-bold text-white text-xs tracking-wider uppercase group-hover:text-[#10B981] transition-colors">PRESERVE PROTOCOL</h4>
+                      <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">Retain Q&A structure and multi-voice boundaries.</p>
                     </div>
                   </button>
                   <button
                     onClick={() => resumeAnalysisWithFormat("monologue")}
-                    className="flex items-start gap-3 p-4 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 hover:border-indigo-500/50 transition-all text-left group"
+                    className="flex items-start gap-4 p-4 border border-white/5 bg-[#080809] hover:bg-[#10B981]/5 hover:border-[#10B981]/50 transition-all text-left group relative"
                   >
-                    <div className="mt-0.5 w-4 h-4 rounded-full border border-slate-500 group-hover:border-indigo-400 flex items-center justify-center">
-                      <div className="w-2 h-2 rounded-full bg-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    <div className="absolute top-0 left-0 w-0 h-full bg-[#10B981] group-hover:w-1 transition-all"></div>
+                    <div className="mt-0.5 w-4 h-4 border border-slate-600 group-hover:border-[#10B981] flex items-center justify-center rounded-none">
+                      <div className="w-2 h-2 bg-[#10B981] opacity-0 group-hover:opacity-100 transition-opacity"></div>
                     </div>
                     <div>
-                      <h4 className="font-semibold text-white group-hover:text-indigo-300">Convert to Monologue</h4>
-                      <p className="text-xs text-slate-500 mt-1">Transform into a cohesive, single-voice narrative or masterclass style.</p>
+                      <h4 className="font-mono font-bold text-white text-xs tracking-wider uppercase group-hover:text-[#10B981] transition-colors">MONOLOGUE PROTOCOL</h4>
+                      <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">Synthesize into a unified, authoritative narrative.</p>
                     </div>
+                  </button>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        )
+      }
+
+      {/* Tone Selection Modal */}
+      {
+        showToneModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#080809]/90 backdrop-blur-md animate-fade-in">
+            <div className="bg-[#111827] border border-[#10B981] rounded-none max-w-4xl w-full overflow-hidden animate-scale-in relative shadow-[0_0_50px_rgba(16,185,129,0.1)]" onClick={(e) => e.stopPropagation()}>
+              <div className="absolute top-0 left-0 w-1 h-full bg-[#10B981]"></div>
+              <div className="p-8">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-8 h-8 flex items-center justify-center flex-shrink-0 text-[#10B981]">
+                    <span className="font-mono text-xl font-bold">{'>_'}</span>
+                  </div>
+                  <div>
+                    <span className="font-mono text-[9px] uppercase tracking-widest text-slate-500 font-bold">SYSTEM ALERT</span>
+                    <h3 className="text-xl font-display font-bold text-white tracking-tight uppercase italic">Choose Your Content Tone</h3>
+                  </div>
+                </div>
+                <p className="text-slate-400 mb-6 leading-relaxed font-sans text-sm">
+                  Your derivative script will be written in this voice across every section.
+                </p>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2 border border-white/10 p-2 bg-[#080809] max-h-[50vh] overflow-y-auto">
+                  
+                  {[
+                    { id: "Conversational", title: "Conversational", desc: "Warm, direct, like talking to a smart friend" },
+                    { id: "Authoritative", title: "Authoritative", desc: "Declarative and confident, zero hedging" },
+                    { id: "Storytelling", title: "Storytelling", desc: "Narrative-first, emotional, scene-driven" },
+                    { id: "Educational", title: "Educational", desc: "Clear, structured, explains the why behind everything" },
+                    { id: "Professional", title: "Professional", desc: "Polished and credible, respects the reader's time" },
+                    { id: "Motivational", title: "Motivational", desc: "Action-oriented and grounded, builds real momentum" },
+                    { id: "Witty", title: "Witty", desc: "Sharp observations, dry humour, unexpected angles" },
+                    { id: "Analytical", title: "Analytical", desc: "Logical, precise, acknowledges nuance and tradeoffs" }
+                  ].map(tone => (
+                    <button
+                      key={tone.id}
+                      onClick={() => setSelectedTone(tone.id)}
+                      className={`flex flex-col items-start gap-2 p-4 border transition-all text-left group relative ${selectedTone === tone.id ? "bg-[#10B981]/10 border-[#10B981]" : "border-white/5 hover:bg-[#10B981]/5 hover:border-[#10B981]/50"}`}
+                    >
+                      <div className={`absolute top-0 left-0 h-full transition-all ${selectedTone === tone.id ? "w-1 bg-[#10B981]" : "w-0 bg-[#10B981] group-hover:w-1"}`}></div>
+                      <div>
+                        <h4 className={`font-mono font-bold text-[10px] tracking-wider uppercase transition-colors ${selectedTone === tone.id ? "text-[#10B981]" : "text-white group-hover:text-[#10B981]"}`}>{tone.title}</h4>
+                        <p className="text-xs text-slate-500 mt-2 leading-relaxed">{tone.desc}</p>
+                      </div>
+                    </button>
+                  ))}
+
+                </div>
+
+                <div className="mt-6 flex justify-end">
+                  <button
+                    disabled={!selectedTone}
+                    onClick={() => generateScriptWithTone(selectedTone)}
+                    className={`group font-mono font-bold text-sm uppercase px-8 py-3 flex items-center gap-2 transition-all relative overflow-hidden ${!selectedTone ? "bg-slate-800 text-slate-500 cursor-not-allowed" : "bg-[#10B981] text-black hover:bg-[#059669]"}`}
+                  >
+                    {!selectedTone ? null : <div className="absolute inset-x-0 top-0 h-px bg-white/50"></div>}
+                    <span>{selectedTone ? "GENERATE DERIVATIVE SCRIPT" : "SELECT A TONE FIRST"}</span>
+                    {selectedTone && (
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-black opacity-40"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-black"></span>
+                      </span>
+                    )}
                   </button>
                 </div>
 

@@ -1,10 +1,10 @@
 // pages/api/transcribe.js
-import { generate } from "youtube-po-token-generator";
-import { toFile } from "openai";
+import fs from "fs";
+import path from "path";
+import os from "os";
+import { randomUUID } from "crypto";
+import youtubedl from "youtube-dl-exec";
 
-/**
- * Config
- */
 export const config = {
   maxDuration: 60, // Standard limit (Hobby=10s/60s, Pro=300s)
   api: {
@@ -68,53 +68,24 @@ function normalizeInput(body = {}) {
   return { videoId: null, url: asString || null };
 }
 
-/**
- * Whisper Transcription (In-Memory)
- */
-async function transcribeBufferWithOpenAI(audioBuffer) {
+async function transcribeWithOpenAI(filePath) {
   const OpenAI = (await import("openai")).OpenAI;
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-  // Convert Buffer to File-like object
-  const file = await toFile(audioBuffer, 'audio.mp3', { type: 'audio/mpeg' });
+  const fileStream = fs.createReadStream(filePath);
 
   try {
-    if (client.audio?.transcriptions?.create) {
-      const resp = await client.audio.transcriptions.create({
-        file: file,
-        model: "whisper-1",
-        response_format: "text",
-      });
-      return (typeof resp === "string" ? resp : (resp?.text ?? String(resp))).trim();
-    }
-  } catch (e) { console.warn("Whisper v4 method failed", e.message); }
-
-  try {
-    if (client.transcriptions?.create) {
-      const resp = await client.transcriptions.create({
-        file: file,
-        model: "whisper-1",
-        response_format: "text",
-      });
-      return (typeof resp === "string" ? resp : (resp?.text ?? String(resp))).trim();
-    }
-  } catch (e) { }
-
-  throw new Error("OpenAI transcription failed.");
+    const resp = await client.audio.transcriptions.create({
+      file: fileStream,
+      model: "whisper-1",
+      response_format: "text",
+    });
+    return (typeof resp === "string" ? resp : (resp?.text ?? String(resp))).trim();
+  } catch (e) {
+    throw new Error(`OpenAI transcription failed: ${e.message}`);
+  }
 }
 
-/**
- * Main handler (Node.js Runtime)
- * Reverted from Edge to fix Build Errors.
- * Includes explicit fix for Player Script EROFS via chdir('/tmp').
- */
 export default async function handler(req, res) {
-  // CRITICAL EROFS FIX: Switch to /tmp so ytdl-core can write player-script.js
-  try {
-    process.chdir('/tmp');
-  } catch (e) {
-    console.warn("Could not change to /tmp:", e);
-  }
 
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
@@ -129,7 +100,6 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Invalid YouTube URL or ID." });
   }
 
-  // START STREAMING RESPONSE
   // We send headers immediately to keep connection open
   res.writeHead(200, {
     'Content-Type': 'application/json',
@@ -137,109 +107,132 @@ export default async function handler(req, res) {
     'Transfer-Encoding': 'chunked'
   });
 
-  // Heartbeat Loop (Node.js style)
   const heartbeatInterval = setInterval(() => {
     res.write(" "); // Send space to keep alive
   }, 5000);
 
+  const safeUrl = `https://www.youtube.com/watch?v=${videoId}`;
+  const tmpDir = os.tmpdir();
+  const outputPath = path.join(tmpDir, `audio_${randomUUID()}.m4a`);
+  const cookiesPath = path.join(tmpDir, `cookies_${randomUUID()}.txt`);
+  let hasCookies = false;
+
   try {
-    console.log(`Starting Streaming Transaction for Video ID: ${videoId}`);
+    console.log(`Starting extraction for Video ID: ${videoId} using yt-dlp`);
+    let metadata = { title: "YouTube Video" };
 
-    const ytdlMod = await import("@distube/ytdl-core");
-    const ytdl = ytdlMod?.default ?? ytdlMod;
+    // Support both cookies string format (Netscape) and YOUTUBE_COOKIES_JSON from previous versions
+    let cookieContent = process.env.YOUTUBE_COOKIES_TXT || "";
+    
+    // If they have YOUTUBE_COOKIES_JSON, we map it back to a Netscape cookie format (Fallback logic if needed)
+    // For simplicity, we prioritize YOUTUBE_COOKIES_TXT.
+    if (cookieContent) {
+      fs.writeFileSync(cookiesPath, cookieContent);
+      hasCookies = true;
+    }
 
-    // 1. Generate Fresh PO Token & Visitor Data
-    console.log("Generating fresh PO Token...");
-    let generatedTokens = {};
+    // 1. Fetch metadata
     try {
-      generatedTokens = await generate();
-      console.log("PO Token generated successfully.");
-    } catch (genErr) {
-      console.error("Token generation failed:", genErr.message);
-    }
-    const { poToken, visitorData } = generatedTokens;
+      console.log("Fetching metadata...");
+      const infoArgs = {
+        dumpJson: true,
+        skipDownload: true,
+        noPlaylist: true,
+      };
+      if (process.env.PROXY_URL) infoArgs.proxy = process.env.PROXY_URL;
+      if (hasCookies) infoArgs.cookies = cookiesPath;
 
-    // 2. Create Authenticated Proxy Agent
-    let agent = undefined;
-    let cookies = [];
-
-    if (process.env.YOUTUBE_COOKIES_JSON) {
-      try { cookies = JSON.parse(process.env.YOUTUBE_COOKIES_JSON); }
-      catch (e) { console.error("Bad cookies JSON", e); }
-    }
-
-    if (process.env.PROXY_URL && ytdl.createProxyAgent) {
-      agent = ytdl.createProxyAgent({ uri: process.env.PROXY_URL }, cookies);
-      console.log("YouTube Proxy Agent created.");
-    } else if (cookies.length > 0 && ytdl.createAgent) {
-      agent = ytdl.createAgent(cookies);
-      console.log("YouTube Cookie Agent created (no proxy).");
+      const infoStr = await youtubedl(safeUrl, infoArgs);
+      const info = typeof infoStr === 'string' ? JSON.parse(infoStr) : infoStr;
+      if (info && info.title) {
+        metadata.title = info.title;
+      }
+      console.log("Metadata fetched:", metadata.title);
+    } catch (infoErr) {
+      console.warn("Failed to extract metadata:", infoErr.message);
     }
 
-    const safeUrl = `https://www.youtube.com/watch?v=${videoId}`;
-
-    // 3. Prepare YTDL Options
-    const ytdlOptions = {
-      agent,
-      filter: "audioonly",
-      quality: "lowestaudio",
-      highWaterMark: 1 << 25, // 32MB
-      playerClients: ["WEB"],
-      poToken: poToken,
-      visitorData: visitorData,
-      saveDebugFile: false, // CRITICAL: PREVENTS EROFS
-    };
-
-    // 4. Fetch Metadata (Title)
-    let metadata = null;
+    // 2. Download audio
     try {
-      const info = await ytdl.getInfo(safeUrl, ytdlOptions);
-      const title = info?.videoDetails?.title ?? (info?.title ?? null);
-      if (title) metadata = { title };
-      console.log("Metadata fetched:", title);
-    } catch (e) {
-      console.warn("Metadata fetch failed (continuing to audio):", e.message);
+      console.log(`Downloading audio to ${outputPath}...`);
+      const dlArgs = {
+        extractAudio: true,
+        audioFormat: 'm4a',
+        output: outputPath,
+        noPlaylist: true,
+      };
+      if (process.env.PROXY_URL) dlArgs.proxy = process.env.PROXY_URL;
+      if (hasCookies) dlArgs.cookies = cookiesPath;
+
+      await youtubedl(safeUrl, dlArgs);
+
+      if (!fs.existsSync(outputPath)) {
+        throw new Error("yt-dlp completed but output file not found.");
+      }
+      console.log("Audio download finished successfully.");
+    } catch (dlErr) {
+      console.error("YouTube download/extraction failed:", dlErr.message);
+      clearInterval(heartbeatInterval);
+      res.write(JSON.stringify({
+        error: "YouTube extraction failed or blocked. Please verify proxies or cookies.",
+        code: "YOUTUBE_FETCH_ERROR",
+        details: dlErr.message,
+      }));
+      return;
     }
 
-    // 5. Stream Audio -> In-Memory Buffer
-    console.log("Streaming audio to memory...");
-    const audioStream = ytdl(safeUrl, ytdlOptions);
-
-    const chunks = [];
-    for await (const chunk of audioStream) {
-      chunks.push(chunk);
-    }
-    const audioBuffer = Buffer.concat(chunks);
-    console.log(`Audio buffered in memory. Size: ${audioBuffer.length} bytes`);
-
-    if (audioBuffer.length > 50 * 1024 * 1024) {
-      throw new Error("Audio too large for memory processing (>50MB)");
-    }
-
-    // 6. Send to Whisper
+    // 3. Send to Whisper
     console.log("Sending to OpenAI Whisper...");
-    const transcript = await transcribeBufferWithOpenAI(audioBuffer);
+    let transcript = "";
+    try {
+      transcript = await transcribeWithOpenAI(outputPath);
+      console.log("Whisper transcription successful.");
+    } catch (whisperErr) {
+      console.error("Whisper API Error:", whisperErr.message);
+      clearInterval(heartbeatInterval);
+      res.write(JSON.stringify({
+        error: "OpenAI Whisper failed.",
+        code: "WHISPER_API_ERROR",
+        details: whisperErr.message,
+      }));
+      return;
+    } finally {
+      // Clean up audio file
+      if (fs.existsSync(outputPath)) {
+        fs.unlinkSync(outputPath);
+      }
+    }
 
-    // Stop heartbeat
     clearInterval(heartbeatInterval);
 
     if (transcript && transcript.length > 0) {
-      // Send final JSON
       const finalResponse = { source: "whisper", transcript, metadata };
       res.write(JSON.stringify(finalResponse));
     } else {
-      throw new Error("Whisper returned empty transcript");
+      res.write(JSON.stringify({
+        error: "Whisper returned empty transcript",
+        code: "WHISPER_API_ERROR"
+      }));
     }
 
   } catch (err) {
     clearInterval(heartbeatInterval);
-    console.error("Transcription failed:", err.message);
-    // Attempt to send error JSON if possible
+    console.error("General system error:", err.message);
     res.write(JSON.stringify({
-      error: "Transcription failed",
+      error: "Unexpected system error during transcription",
+      code: "SYSTEM_ERROR",
       details: err.message
     }));
   } finally {
+    // Clean up cookies file
+    if (hasCookies && fs.existsSync(cookiesPath)) {
+      try {
+        fs.unlinkSync(cookiesPath);
+      } catch (e) {
+        // ignore
+      }
+    }
+    clearInterval(heartbeatInterval);
     res.end();
   }
 }
