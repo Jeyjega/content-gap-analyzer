@@ -4,9 +4,12 @@ const nextConfig = {
     devIndicators: {
         buildActivity: false,
     },
+    // Prevent webpack from bundling these — let Node.js resolve them at runtime
+    serverExternalPackages: ['apify-client', 'proxy-agent'],
     experimental: {
         outputFileTracingIncludes: {
-            '/api/transcribe': ['./bin/**/*'],
+            // Ensure apify-client and proxy-agent are included in the Vercel deployment bundle
+            '/api/transcribe': ['./node_modules/apify-client/**/*', './node_modules/proxy-agent/**/*'],
         },
     },
 };
