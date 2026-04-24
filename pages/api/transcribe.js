@@ -1,5 +1,6 @@
 import fetch from "node-fetch";
 import { ApifyClient } from "apify-client";
+import { YoutubeTranscript } from "youtube-transcript";
 
 export const config = {
   maxDuration: 300,
@@ -122,7 +123,6 @@ export default async function handler(req, res) {
     // Step 1: Free captions (youtube-transcript)
     console.log("Step 1: Attempting free captions via youtube-transcript...");
     try {
-      const { YoutubeTranscript } = await import('youtube-transcript');
       const ytTranscript = await YoutubeTranscript.fetchTranscript(videoId);
       if (ytTranscript && ytTranscript.length > 0) {
         finalTranscript = ytTranscript.map(t => t.text).join(" ");
