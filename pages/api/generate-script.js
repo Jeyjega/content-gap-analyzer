@@ -123,6 +123,8 @@ export default async function handler(req, res) {
 
     const toneRule = `\n<tone_rule>\n${selectedToneRule}\n\nCONSISTENCY RULE:\nThe selected tone must be present in every paragraph from the first word to the last. If any paragraph drifts out of tone, rewrite it before outputting. A script that sounds casual for two paragraphs then formal for one has failed tone application.\n</tone_rule>\n`;
 
+    const lengthConstraint = `\nCrucial Length Constraint: Analyze the word count and pacing of the original input transcript. You must ensure the final 'Derivative Script' closely matches the length and duration of the original video. If the original is a short 5-minute video, the derivative script must be concise. Do not add unnecessary filler or fluff to artificially lengthen the output.\n`;
+
     /* -------------------------------------------
        CHECK FOR ADVANCED FORMAT SINGLE-PASS
     ------------------------------------------- */
@@ -151,7 +153,7 @@ export default async function handler(req, res) {
 - Never add advice not implied in the transcript.
 - Preserve the speaker's level of abstraction — if the transcript is vague, stay vague.
 - Quote numbers exactly as stated; do not estimate or infer.
-</absolute_rules>${toneRule}
+</absolute_rules>${toneRule}${lengthConstraint}
 
 <inputs>
 <transcript>
@@ -257,7 +259,7 @@ Generate the ${advancedTarget} now. Return ONLY the final output — no explanat
 
       const advancedResp = await anthropic.messages.create({
         model: "claude-sonnet-4-6",
-        max_tokens: 3000,
+        max_tokens: 8192,
         temperature: 0.3,
         system: [{ type: "text", text: advancedSystemPrompt, cache_control: { type: "ephemeral" } }],
         messages: [{ role: "user", content: `Generate the ${advancedTarget} derivative now using the specified tone.` }]
@@ -296,7 +298,7 @@ Generate the ${advancedTarget} now. Return ONLY the final output — no explanat
 
       const outlineResp = await anthropic.messages.create({
         model: "claude-sonnet-4-6",
-        max_tokens: 1500,
+        max_tokens: 8192,
         temperature: 0.2,
         system: [{ type: "text", text: outlineSystemPrompt, cache_control: { type: "ephemeral" } }],
         messages: [{ role: "user", content: JSON.stringify(gaps) }]
@@ -341,7 +343,7 @@ Generate the ${advancedTarget} now. Return ONLY the final output — no explanat
 
       const openingResp = await anthropic.messages.create({
         model: "claude-sonnet-4-6",
-        max_tokens: 1200,
+        max_tokens: 8192,
         temperature: 0.3,
         system: [{ type: "text", text: openingSystemPrompt, cache_control: { type: "ephemeral" } }],
         messages: [{ role: "user", content: openingUserMessage }]
@@ -394,7 +396,7 @@ ${section.gaps_covered.join(", ")}
 
         const sectionResp = await anthropic.messages.create({
           model: "claude-sonnet-4-6",
-          max_tokens: 1800,
+          max_tokens: 8192,
           temperature: 0.3,
           system: [{ type: "text", text: sectionSystemPrompt, cache_control: { type: "ephemeral" } }],
           messages: [{ role: "user", content: "Continue the script now, resolving the assigned gaps." }]
@@ -427,7 +429,7 @@ ${section.gaps_covered.join(", ")}
 
       const closingResp = await anthropic.messages.create({
         model: "claude-sonnet-4-6",
-        max_tokens: 1200,
+        max_tokens: 8192,
         temperature: 0.3,
         system: [{ type: "text", text: closingSystemPrompt, cache_control: { type: "ephemeral" } }],
         messages: [{ role: "user", content: finalScript.slice(-4000) }]
@@ -467,7 +469,7 @@ generation.
   Every person's name, film title, and work referenced must 
   appear exactly as spoken in the transcript — even if a more 
   recognisable version exists.
-</absolute_constraints>${toneRule}
+</absolute_constraints>${toneRule}${lengthConstraint}
 
 <gap_resolution_tiers>
 Gaps are resolved differently based on severity:
@@ -624,7 +626,7 @@ No analysis, no explanations, no meta commentary.
 </universal_validation_gate>`;
         const monologueResp = await anthropic.messages.create({
           model: "claude-sonnet-4-6",
-          max_tokens: 4000,
+          max_tokens: 8192,
           temperature: 0.15,
           system: [{ type: "text", text: derivativeSystemPrompt, cache_control: { type: "ephemeral" } }],
           messages: [{ role: "user", content: "Generate the derivative script now." }]

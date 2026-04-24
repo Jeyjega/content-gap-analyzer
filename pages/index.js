@@ -33,7 +33,7 @@ export default function Home() {
         <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col items-center text-center z-10 w-full">
           
           <div className="font-mono text-[10px] text-slate-500 uppercase tracking-[0.2em] mb-6 border border-white/10 px-3 py-1 bg-[#111827]/50 lg:-mt-10">
-            SYSTEM-01 // STRATEGIC COMMAND
+            Now in Beta
           </div>
 
           <h1 className="font-display text-5xl md:text-7xl lg:text-8xl font-bold tracking-tighter text-white mb-4 leading-[0.9]">
@@ -41,69 +41,38 @@ export default function Home() {
             <span className="text-[#10B981]">In One Click.</span>
           </h1>
 
-          <p className="font-sans text-lg md:text-xl text-slate-400 max-w-2xl mb-20 tracking-tight">
-            Bridge the chasm between raw insight and executive presence with GapGens' algorithmic rigor.
+          <p className="font-sans text-lg md:text-xl text-slate-400 max-w-2xl mb-8 tracking-tight">
+            Paste any script, video URL, or article. GapGens identifies every gap in your content and rewrites it — platform-ready, in your chosen tone, in seconds.
           </p>
+
+          <Link href="/dashboard">
+            <button className="bg-[#10B981] text-[#080809] font-bold font-mono text-sm tracking-[0.15em] px-10 py-4 uppercase shadow-[0_0_20px_rgba(16,185,129,0.2)] hover:shadow-[0_0_40px_rgba(16,185,129,0.4)] transition-all mb-20">
+              Start Free Audit
+            </button>
+          </Link>
 
           {/* GAP ANALYSIS WIDGET */}
           <div className="w-full max-w-4xl bg-[#111827]/80 backdrop-blur-xl border border-white/5 p-8 text-left grid grid-cols-1 md:grid-cols-[2fr_1fr] gap-8 relative mt-10">
             {/* Top Stitch line */}
             <div className="absolute top-0 left-8 right-8 h-[1px] bg-gradient-to-r from-transparent via-[#10B981]/20 to-transparent"></div>
             
-            <div className="space-y-6">
-              <div className="flex justify-between items-baseline border-b border-dashed border-white/10 pb-4">
-                 <h2 className="font-display text-2xl font-bold text-white tracking-tight">GAP ANALYSIS</h2>
-                 <span className="font-mono text-xs text-[#10B981]">REAL_TIME // ACTIVE</span>
+            {/* GAP DETECTED CARD */}
+            <div className="col-span-full space-y-2">
+              <div className="flex justify-between items-baseline border-b border-dashed border-white/10 pb-4 mb-6">
+                <h2 className="font-display text-2xl font-bold text-white tracking-tight">GAP ANALYSIS</h2>
+                <span className="font-mono text-xs text-[#10B981]">REAL_TIME // ACTIVE</span>
               </div>
-              
-              <div className="space-y-4">
-                <div>
-                  <div className="flex justify-between font-mono text-[10px] text-slate-400 mb-2">
-                    <span>AUTHORITY QUOTIENT</span>
-                    <span className="text-white">98.4%</span>
+              <div className="bg-[#080809] border border-white/5 p-6 flex gap-5 items-start relative">
+                <div className="absolute top-0 left-0 w-1 h-full bg-[#10B981]"></div>
+                <div className="text-[#10B981] text-xl mt-0.5">▹</div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-3 mb-3">
+                    <span className="font-mono text-[10px] text-white tracking-widest uppercase">GAP DETECTED</span>
+                    <span className="font-mono text-[10px] font-bold px-2 py-0.5 border border-[#10B981]/40 text-[#10B981] bg-[#10B981]/10 uppercase tracking-widest">CRITICAL</span>
                   </div>
-                  <div className="h-1 bg-[#080809] w-full">
-                    <div className="h-full bg-[#10B981] w-[98%] shadow-[0_0_10px_rgba(16,185,129,0.3)]"></div>
-                  </div>
+                  <h4 className="font-sans font-bold text-white text-base mb-2">Missing specificity on timeline</h4>
+                  <p className="font-sans text-sm text-slate-400 leading-relaxed">The speaker claims results happened quickly but provides no timeframe, making the claim unverifiable and unpersuasive to the audience.</p>
                 </div>
-                
-                <div>
-                  <div className="flex justify-between font-mono text-[10px] text-slate-400 mb-2">
-                    <span>SOURCE FIDELITY</span>
-                    <span className="text-white">99.9%</span>
-                  </div>
-                  <div className="h-1 bg-[#080809] w-full">
-                    <div className="h-full bg-[#0D9488] w-[99%]"></div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-4 pt-4">
-                <div className="h-24 bg-[#10B981]/10 border border-[#10B981]/20"></div>
-                <div className="h-24 bg-[#10B981]/5 border border-[#10B981]/10"></div>
-                <div className="h-32 bg-[#10B981]/20 border border-[#10B981]/30 -mt-8 shadow-[0_0_20px_rgba(16,185,129,0.1)] relative">
-                  <div className="absolute top-0 left-0 w-full h-[2px] bg-[#10B981]"></div>
-                </div>
-              </div>
-            </div>
-
-            <div className="border-l border-dashed border-white/10 pl-8 space-y-6 flex flex-col justify-center">
-              <div>
-                 <div className="font-mono text-[10px] text-slate-500 mb-4 whitespace-nowrap">STRATEGIC MODULES</div>
-                 <ul className="space-y-6">
-                   <li className="text-sm text-slate-300 border-l border-[#10B981] pl-4 py-1">
-                     <span className="font-bold text-white block">DATA INGESTION</span>
-                     <span className="text-slate-500 text-xs">Synthesizing 48h fragmented processes into core vectors.</span>
-                   </li>
-                   <li className="text-sm text-slate-300 border-l border-white/10 pl-4 py-1">
-                     <span className="font-bold text-white block">GAP MAPPING</span>
-                     <span className="text-slate-500 text-xs">Identifying architectonic flaws in discourse logic.</span>
-                   </li>
-                   <li className="text-sm text-[#10B981] border-l border-[#10B981] pl-4 py-1">
-                     <span className="font-bold block">STRATEGIC OUTPUT</span>
-                     <span className="text-xs opacity-80">Finalize qualitative briefing documentation.</span>
-                   </li>
-                 </ul>
               </div>
             </div>
 
@@ -132,12 +101,12 @@ export default function Home() {
                <div className="bg-[#111827] border border-white/5 p-8 shadow-xl relative z-10 w-full">
                  <div className="absolute -top-3 -left-3 w-6 h-6 bg-[#080809] border border-white/10 flex items-center justify-center font-mono text-[10px] text-slate-500">01</div>
                  <h3 className="font-bold text-white mb-6 uppercase tracking-wider text-sm">INPUT</h3>
-                 <div className="bg-[#080809] border border-white/5 p-5 font-mono text-xs text-slate-400 space-y-3 h-48 overflow-hidden relative">
-                   <span className="text-slate-600 block">// RAW TRANSCRIPT BLOCK 34</span>
-                   <p className="leading-relaxed">"...it seems that the market direction is unclear but we might see growth in Q3 if the variables align with our internal models or..."</p>
-                   <div className="text-[#0D9488] animate-pulse absolute bottom-5 left-5">_PROCESSING_CYPHER</div>
-                 </div>
-                 <p className="mt-5 text-xs text-slate-500 font-sans">Fragmented raw human spoken text vs native data.</p>
+                  <div className="bg-[#080809] border border-white/5 p-5 font-mono text-xs text-slate-400 space-y-3 h-48 overflow-hidden relative">
+                    <span className="text-slate-600 block">// RAW TRANSCRIPT BLOCK 34</span>
+                    <p className="leading-relaxed">"...it seems that the market direction is unclear but we might see growth in Q3 if the variables align with our internal models or..."</p>
+                    <div className="text-[#0D9488] animate-pulse absolute bottom-5 left-5">_PROCESSING_CYPHER</div>
+                  </div>
+                  <p className="mt-5 text-sm text-slate-300 font-sans">Paste a raw transcript, drop a YouTube URL, or link a blog post. GapGens accepts any format and extracts the full content automatically.</p>
                </div>
    
                <div className="bg-[#111827] border border-white/5 p-8 shadow-xl relative z-10 w-full">
@@ -159,23 +128,24 @@ export default function Home() {
                      </div>
                    </div>
                  </div>
-                 <p className="mt-5 text-xs text-slate-500 font-sans">Gap detection and rigorous strategy mapping.</p>
+                  <p className="mt-5 text-sm text-slate-300 font-sans">Every gap is identified, categorised by severity — Critical, Medium, or Minor — and described with exactly what is missing and why it matters.</p>
                </div>
    
                <div className="bg-[#111827] border border-[#10B981]/20 p-8 shadow-xl relative shadow-[#10B981]/5 z-10 w-full">
                  <div className="absolute -top-3 -left-3 w-6 h-6 bg-[#10B981] text-[#080809] flex items-center justify-center font-mono text-[10px] font-bold">03</div>
                  <h3 className="font-bold text-[#10B981] mb-6 uppercase tracking-wider text-sm">OUTPUT</h3>
-                 <div className="bg-[#080809] border border-white/5 p-6 h-48 relative flex flex-col justify-center">
-                   <div className="absolute top-0 left-0 w-1 h-full bg-[#10B981]"></div>
-                   <h4 className="font-sans text-[13px] text-white font-medium leading-relaxed">
-                     "The Q3 growth trajectory is contingent upon three specific structural pivots. Our methodology ensures resilience regardless of..."
-                   </h4>
-                   <div className="flex gap-2 mt-4">
-                     <span className="px-2 py-0.5 bg-white/5 text-[10px] font-mono text-[#10B981] border border-white/10 uppercase">LinkedIn</span>
-                     <span className="px-2 py-0.5 bg-[#10B981]/10 text-[10px] font-mono text-[#10B981] border border-[#10B981]/30 uppercase">Authority: 98</span>
-                   </div>
-                 </div>
-                 <p className="mt-5 text-xs text-slate-500 font-sans">Authority optimized scripts ready for executive presence.</p>
+                  <div className="bg-[#080809] border border-white/5 p-5 h-48 relative flex flex-col justify-between">
+                    <div className="absolute top-0 left-0 w-1 h-full bg-[#10B981]"></div>
+                    <div className="opacity-50">
+                      <div className="font-mono text-[9px] text-slate-500 uppercase tracking-widest mb-1">ORIGINAL</div>
+                      <p className="font-sans text-xs text-slate-400 leading-relaxed italic">"I niched down and income went up pretty fast."</p>
+                    </div>
+                    <div>
+                      <div className="font-mono text-[9px] text-[#10B981] uppercase tracking-widest mb-1">GAPGENS OUTPUT</div>
+                      <p className="font-sans text-xs text-white leading-relaxed">"I stopped taking every client and committed to one specific type. The income didn&apos;t creep — it moved quickly once that focus was locked in."</p>
+                    </div>
+                  </div>
+                  <p className="mt-5 text-sm text-slate-300 font-sans">Derivative scripts generated in your chosen voice using the <span className="text-[#10B981] font-semibold">Custom Tone Selector</span> — Conversational, Authoritative, Storytelling, and more.</p>
                </div>
    
              </div>
@@ -188,8 +158,7 @@ export default function Home() {
       <section className="py-32 relative border-t border-dashed border-white/10 bg-[#080809] overflow-hidden">
         <ScrollReveal>
           <div className="text-center mb-24">
-            <h2 className="font-display text-4xl font-bold text-white tracking-tighter uppercase">Global Influence</h2>
-            <div className="font-mono text-[10px] text-slate-500 uppercase tracking-[0.2em] mt-2">Universal Strategic Interconnectivity</div>
+            <h2 className="font-display text-4xl font-bold text-white tracking-tighter uppercase">Works Across Every Platform</h2>
           </div>
           
           <div className="relative w-full max-w-4xl mx-auto h-[400px] flex items-center justify-center">
@@ -241,6 +210,9 @@ export default function Home() {
             </div>
             
           </div>
+          <p className="text-center font-sans text-sm text-slate-500 mt-10">
+            YouTube · LinkedIn · X · Instagram · Blog — one analysis, every format, your chosen tone.
+          </p>
         </ScrollReveal>
       </section>
 
@@ -254,8 +226,8 @@ export default function Home() {
                
                <div className="font-mono text-[10px] text-[#10B981] mb-8 tracking-[0.3em]">READY FOR DEPLOYMENT</div>
                
-               <h2 className="font-display text-4xl md:text-6xl font-bold text-white mb-12 tracking-tighter uppercase italic pr-4">
-                 Experience The Authority<br/>Audit.
+               <h2 className="font-display text-4xl md:text-6xl font-bold text-white mb-12 tracking-tighter">
+                 Analyse Your First Script Free.
                </h2>
 
                <div className="flex flex-col sm:flex-row gap-6 justify-center items-center">
@@ -264,26 +236,22 @@ export default function Home() {
                      Start Free Audit
                    </button>
                  </Link>
-                 <Link href="/#">
+                 <Link href="/dashboard">
                    <button className="bg-transparent border border-white/20 text-white font-bold font-mono text-sm tracking-[0.15em] px-10 py-5 uppercase hover:bg-white/5 transition-all">
-                     Talk To A Strategist
+                     See a Sample Analysis
                    </button>
                  </Link>
                </div>
 
                <div className="mt-12 font-mono text-[10px] text-slate-500 uppercase flex items-center justify-center gap-3">
                  <span className="w-1.5 h-1.5 bg-[#10B981] rounded-none animate-pulse-soft"></span>
-                 ACTIVE MODEL: GAP // SYSTEM STATUS: NOMINAL
+                 No account needed to start. First analysis is free.
                </div>
             </div>
           </div>
         </ScrollReveal>
       </section>
 
-      {/* FEEDBACK */}
-      <section className="py-12 bg-[#080809] border-t border-white/5">
-        <FeedbackBox />
-      </section>
     </Layout>
   );
 }

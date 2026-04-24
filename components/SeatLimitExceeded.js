@@ -46,22 +46,22 @@ export default function SeatLimitExceeded() {
                         initial={{ scale: 0.95, opacity: 0, y: 20 }}
                         animate={{ scale: 1, opacity: 1, y: 0 }}
                         exit={{ scale: 0.95, opacity: 0, y: 20 }}
-                        className="w-full max-w-md bg-[#0f172a] border border-white/10 rounded-2xl shadow-2xl overflow-hidden"
+                        className="w-full max-w-md bg-[#0f172a] border border-[#10B981] rounded-none shadow-[0_0_50px_rgba(16,185,129,0.1)] overflow-hidden"
                     >
                         <div className="p-8 text-center">
-                            <div className="w-16 h-16 rounded-full bg-indigo-500/10 flex items-center justify-center mx-auto mb-6">
-                                <svg className="w-8 h-8 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <div className="w-16 h-16 rounded-none bg-[#10B981]/10 border border-[#10B981]/50 flex items-center justify-center mx-auto mb-6">
+                                <svg className="w-8 h-8 text-[#10B981]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                                 </svg>
                             </div>
 
-                            <h2 className="text-2xl font-display font-bold text-white mb-3">Seat limit reached</h2>
+                            <h2 className="text-xl font-mono uppercase tracking-widest text-white mb-3">Seat limit reached</h2>
 
                             <p className="text-slate-300 mb-6 leading-relaxed">
                                 This account is currently active on the maximum number of devices.
                             </p>
 
-                            <div className="bg-white/5 rounded-lg p-4 mb-8 border border-white/5">
+                            <div className="bg-[#080809] rounded-none p-4 mb-8 border border-white/10">
                                 <p className="text-sm text-slate-400">
                                     To continue, sign out from another device or use a different account.
                                 </p>
@@ -70,7 +70,7 @@ export default function SeatLimitExceeded() {
                             <div className="flex flex-col gap-3">
                                 <Button
                                     onClick={handleClose}
-                                    variant="white"
+                                    variant="primary"
                                     className="w-full justify-center"
                                 >
                                     Go back to home

@@ -99,7 +99,11 @@ export default async function handler(req, res) {
     });
 
     const finalType = type || "youtube";
-    const finalMetadata = { ...(metadata || {}), type: finalType, is_interview: isInterview };
+    const finalMetadata = { 
+      ...(metadata || {}), 
+      type: finalType, 
+      is_interview: isInterview
+    };
 
     const payload = {
       title: niceTitle,

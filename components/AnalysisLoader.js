@@ -71,7 +71,7 @@ export default function AnalysisLoader({ status }) {
         <div className="w-full max-w-lg mx-auto py-12 animate-fade-in">
             <div className="relative">
                 {/* Vertical connecting line */}
-                <div className="absolute left-[27px] top-4 bottom-4 w-0.5 bg-gradient-to-b from-indigo-500/30 to-white/5 rounded-full -z-10"></div>
+                <div className="absolute left-[27px] top-4 bottom-4 w-0.5 bg-gradient-to-b from-[#10B981]/30 to-[#080809] rounded-none -z-10"></div>
 
                 <div className="space-y-8">
                     {steps.map((step, index) => {
@@ -84,16 +84,16 @@ export default function AnalysisLoader({ status }) {
 
                                 {/* Icon Bubble */}
                                 <div className={`
-                                    relative w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0 border-2 transition-all duration-500
+                                    relative w-14 h-14 rounded-none flex items-center justify-center flex-shrink-0 border-2 transition-all duration-500
                                     ${isActive
-                                        ? 'bg-indigo-600 border-indigo-500 text-white shadow-[0_0_20px_rgba(79,70,229,0.5)] scale-110 z-10'
+                                        ? 'bg-[#10B981] border-[#10B981] text-[#080809] shadow-[0_0_20px_rgba(16,185,129,0.5)] scale-110 z-10'
                                         : isCompleted
-                                            ? 'bg-[#030014] border-indigo-500/30 text-indigo-400 z-10'
+                                            ? 'bg-[#030014] border-[#10B981]/30 text-[#10B981] z-10'
                                             : 'bg-[#030014] border-white/10 text-slate-600 z-0'
                                     }
                                 `}>
                                     {isActive && (
-                                        <div className="absolute inset-0 rounded-2xl bg-indigo-500 animate-ping opacity-20"></div>
+                                        <div className="absolute inset-0 rounded-none bg-[#10B981] animate-ping opacity-20"></div>
                                     )}
 
                                     {isCompleted ? (
@@ -109,12 +109,12 @@ export default function AnalysisLoader({ status }) {
 
                                 {/* Text Label */}
                                 <div className="flex-1">
-                                    <h4 className={`text-lg font-medium transition-colors duration-300 ${isActive ? 'text-white' : isCompleted ? 'text-indigo-200' : 'text-slate-500'}`}>
+                                    <h4 className={`font-mono tracking-widest text-xs uppercase transition-colors duration-300 ${isActive ? 'text-[#10B981]' : isCompleted ? 'text-white/60' : 'text-slate-600'}`}>
                                         {step.label}
                                     </h4>
                                     {isActive && (
-                                        <div className="mt-1 h-1 w-24 bg-indigo-900/30 rounded-full overflow-hidden">
-                                            <div className="h-full bg-indigo-500 rounded-full w-1/3 animate-[progress_1.5s_ease-in-out_infinite]"></div>
+                                        <div className="mt-1 h-1 w-24 bg-white/10 rounded-none overflow-hidden">
+                                            <div className="h-full bg-[#10B981] rounded-none w-1/3 animate-[progress_1.5s_ease-in-out_infinite]"></div>
                                         </div>
                                     )}
                                 </div>
@@ -122,10 +122,10 @@ export default function AnalysisLoader({ status }) {
                                 {/* Status Indicator */}
                                 <div className="w-6 flex justify-center">
                                     {isActive && (
-                                        <div className="w-2 h-2 bg-indigo-400 rounded-full animate-pulse"></div>
+                                        <div className="w-2 h-2 bg-[#10B981] rounded-none animate-pulse"></div>
                                     )}
                                     {isCompleted && (
-                                        <div className="w-1.5 h-1.5 bg-indigo-500/50 rounded-full"></div>
+                                        <div className="w-1.5 h-1.5 bg-[#10B981]/50 rounded-none"></div>
                                     )}
                                 </div>
                             </div>

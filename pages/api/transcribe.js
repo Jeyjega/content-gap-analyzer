@@ -1,18 +1,13 @@
-// pages/api/transcribe.js
-import fs from "fs";
-import path from "path";
-import os from "os";
-import { randomUUID } from "crypto";
-import youtubedl from "youtube-dl-exec";
+import fetch from "node-fetch";
+import { ApifyClient } from "apify-client";
 
 export const config = {
-  maxDuration: 60, // Standard limit (Hobby=10s/60s, Pro=300s)
+  maxDuration: 300,
   api: {
     bodyParser: true,
   },
 };
 
-// Force dynamic to prevent static generation
 export const dynamic = 'force-dynamic';
 
 function extractVideoId(urlOrId) {
@@ -61,32 +56,36 @@ function normalizeInput(body = {}) {
       }
       return { videoId: null, url: `${u.origin}${u.pathname}` };
     }
-  } catch (e) {
-    // not a URL
-  }
+  } catch (e) {}
 
   return { videoId: null, url: asString || null };
 }
 
-async function transcribeWithOpenAI(filePath) {
-  const OpenAI = (await import("openai")).OpenAI;
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  const fileStream = fs.createReadStream(filePath);
-
+async function getYouTubeMetadata(videoId) {
   try {
-    const resp = await client.audio.transcriptions.create({
-      file: fileStream,
-      model: "whisper-1",
-      response_format: "text",
-    });
-    return (typeof resp === "string" ? resp : (resp?.text ?? String(resp))).trim();
+    const res = await fetch(`https://www.youtube.com/watch?v=${videoId}`);
+    const html = await res.text();
+    let duration = null;
+    let title = "YouTube Video";
+    
+    const durationMatch = html.match(/"lengthSeconds":"(\d+)"/);
+    if (durationMatch && durationMatch[1]) {
+      duration = parseInt(durationMatch[1], 10);
+    }
+    
+    const titleMatch = html.match(/<title>(.*?) - YouTube<\/title>/);
+    if (titleMatch && titleMatch[1]) {
+      title = titleMatch[1].replace(/&amp;/g, '&').replace(/&quot;/g, '"');
+    }
+    
+    return { duration, title };
   } catch (e) {
-    throw new Error(`OpenAI transcription failed: ${e.message}`);
+    console.warn("Could not fetch YouTube metadata", e);
+    return { duration: null, title: "YouTube Video" };
   }
 }
 
 export default async function handler(req, res) {
-
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
@@ -100,7 +99,8 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Invalid YouTube URL or ID." });
   }
 
-  // We send headers immediately to keep connection open
+  const videoUrl = input.url || `https://www.youtube.com/watch?v=${videoId}`;
+
   res.writeHead(200, {
     'Content-Type': 'application/json',
     'Connection': 'keep-alive',
@@ -111,127 +111,85 @@ export default async function handler(req, res) {
     res.write(" "); // Send space to keep alive
   }, 5000);
 
-  const safeUrl = `https://www.youtube.com/watch?v=${videoId}`;
-  const tmpDir = os.tmpdir();
-  const outputPath = path.join(tmpDir, `audio_${randomUUID()}.m4a`);
-  const cookiesPath = path.join(tmpDir, `cookies_${randomUUID()}.txt`);
-  let hasCookies = false;
-
   try {
-    console.log(`Starting extraction for Video ID: ${videoId} using yt-dlp`);
-    let metadata = { title: "YouTube Video" };
-
-    // Support both cookies string format (Netscape) and YOUTUBE_COOKIES_JSON from previous versions
-    let cookieContent = process.env.YOUTUBE_COOKIES_TXT || "";
+    console.log(`Starting transcription extraction for Video ID: ${videoId}`);
     
-    // If they have YOUTUBE_COOKIES_JSON, we map it back to a Netscape cookie format (Fallback logic if needed)
-    // For simplicity, we prioritize YOUTUBE_COOKIES_TXT.
-    if (cookieContent) {
-      fs.writeFileSync(cookiesPath, cookieContent);
-      hasCookies = true;
-    }
+    const metadata = await getYouTubeMetadata(videoId);
 
-    // 1. Fetch metadata
+    let finalTranscript = "";
+    let source = "";
+
+    // Step 1: Free captions (youtube-transcript)
+    console.log("Step 1: Attempting free captions via youtube-transcript...");
     try {
-      console.log("Fetching metadata...");
-      const infoArgs = {
-        dumpJson: true,
-        skipDownload: true,
-        noPlaylist: true,
-      };
-      if (process.env.PROXY_URL) infoArgs.proxy = process.env.PROXY_URL;
-      if (hasCookies) infoArgs.cookies = cookiesPath;
-
-      const infoStr = await youtubedl(safeUrl, infoArgs);
-      const info = typeof infoStr === 'string' ? JSON.parse(infoStr) : infoStr;
-      if (info && info.title) {
-        metadata.title = info.title;
+      const { YoutubeTranscript } = await import('youtube-transcript');
+      const ytTranscript = await YoutubeTranscript.fetchTranscript(videoId);
+      if (ytTranscript && ytTranscript.length > 0) {
+        finalTranscript = ytTranscript.map(t => t.text).join(" ");
+        source = "youtube-transcript";
+        console.log("Step 1 succeeded: youtube-transcript extracted captions.");
+      } else {
+        throw new Error("youtube-transcript returned empty array.");
       }
-      console.log("Metadata fetched:", metadata.title);
-    } catch (infoErr) {
-      console.warn("Failed to extract metadata:", infoErr.message);
-    }
+    } catch (step1Err) {
+      console.log(`Step 1 failed: ${step1Err.message}`);
+      
+      // Step 2: Apify fallback
+      console.log("Step 2: Attempting Apify fallback extraction...");
+      try {
+        if (!process.env.APIFY_API_TOKEN) {
+          throw new Error("Missing APIFY_API_TOKEN");
+        }
+        const client = new ApifyClient({ token: process.env.APIFY_API_TOKEN });
+        
+        const run = await client.actor("akash9078/youtube-transcript-extractor").call({
+          videoUrl: videoUrl
+        });
 
-    // 2. Download audio
-    try {
-      console.log(`Downloading audio to ${outputPath}...`);
-      const dlArgs = {
-        extractAudio: true,
-        audioFormat: 'm4a',
-        output: outputPath,
-        noPlaylist: true,
-      };
-      if (process.env.PROXY_URL) dlArgs.proxy = process.env.PROXY_URL;
-      if (hasCookies) dlArgs.cookies = cookiesPath;
-
-      await youtubedl(safeUrl, dlArgs);
-
-      if (!fs.existsSync(outputPath)) {
-        throw new Error("yt-dlp completed but output file not found.");
-      }
-      console.log("Audio download finished successfully.");
-    } catch (dlErr) {
-      console.error("YouTube download/extraction failed:", dlErr.message);
-      clearInterval(heartbeatInterval);
-      res.write(JSON.stringify({
-        error: "YouTube extraction failed or blocked. Please verify proxies or cookies.",
-        code: "YOUTUBE_FETCH_ERROR",
-        details: dlErr.message,
-      }));
-      return;
-    }
-
-    // 3. Send to Whisper
-    console.log("Sending to OpenAI Whisper...");
-    let transcript = "";
-    try {
-      transcript = await transcribeWithOpenAI(outputPath);
-      console.log("Whisper transcription successful.");
-    } catch (whisperErr) {
-      console.error("Whisper API Error:", whisperErr.message);
-      clearInterval(heartbeatInterval);
-      res.write(JSON.stringify({
-        error: "OpenAI Whisper failed.",
-        code: "WHISPER_API_ERROR",
-        details: whisperErr.message,
-      }));
-      return;
-    } finally {
-      // Clean up audio file
-      if (fs.existsSync(outputPath)) {
-        fs.unlinkSync(outputPath);
+        const { items } = await client.dataset(run.defaultDatasetId).listItems();
+        
+        if (items && items.length > 0) {
+          const item = items[0];
+          // Try different possible keys for transcript text
+          const extractedText = item.transcript || item.text || item.transcriptText || item.fullText;
+          if (extractedText) {
+            finalTranscript = extractedText;
+            source = "apify-extractor";
+            console.log("Step 2 succeeded: Apify actor extracted transcript.");
+          } else {
+            throw new Error("Apify dataset item did not contain transcript text.");
+          }
+        } else {
+          throw new Error("Apify run returned empty dataset.");
+        }
+      } catch (step2Err) {
+        console.log(`Step 2 failed: ${step2Err.message}`);
+        throw new Error("This video could not be transcribed. Please try another video.");
       }
     }
 
     clearInterval(heartbeatInterval);
 
-    if (transcript && transcript.length > 0) {
-      const finalResponse = { source: "whisper", transcript, metadata };
-      res.write(JSON.stringify(finalResponse));
-    } else {
-      res.write(JSON.stringify({
-        error: "Whisper returned empty transcript",
-        code: "WHISPER_API_ERROR"
-      }));
-    }
-
+    res.write(JSON.stringify({
+      source,
+      transcript: finalTranscript,
+      metadata
+    }));
   } catch (err) {
     clearInterval(heartbeatInterval);
-    console.error("General system error:", err.message);
+    console.error("Transcription pipeline error:", err.message);
+    
+    let code = err.code || "SYSTEM_ERROR";
+    if (code !== "VIDEO_TOO_LONG") {
+       code = "TRANSCRIPTION_ERROR";
+    }
+
     res.write(JSON.stringify({
-      error: "Unexpected system error during transcription",
-      code: "SYSTEM_ERROR",
+      error: err.message,
+      code: code,
       details: err.message
     }));
   } finally {
-    // Clean up cookies file
-    if (hasCookies && fs.existsSync(cookiesPath)) {
-      try {
-        fs.unlinkSync(cookiesPath);
-      } catch (e) {
-        // ignore
-      }
-    }
     clearInterval(heartbeatInterval);
     res.end();
   }

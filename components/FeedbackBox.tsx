@@ -68,7 +68,7 @@ export default function FeedbackBox() {
         <div className="w-full max-w-2xl mx-auto mt-12 pt-8 border-t border-white/5">
             <div className="flex flex-col gap-4">
                 <div className="mb-2">
-                    <h3 className="text-lg font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-300 via-white to-indigo-300 inline-block">
+                    <h3 className="text-[#10B981] font-mono tracking-widest uppercase text-xs inline-block">
                         Help Us Improve GapGens
                     </h3>
                     <p className="text-slate-500 text-xs mt-1">
@@ -84,7 +84,7 @@ export default function FeedbackBox() {
                     disabled={status === 'submitting'}
                     placeholder="Share your feedback…"
                     maxLength={1000}
-                    className="w-full h-24 bg-white/5 border border-white/10 rounded-xl p-4 text-sm text-slate-300 placeholder:text-slate-600 focus:ring-1 focus:ring-indigo-500/50 focus:border-indigo-500/50 outline-none transition-all resize-none disabled:opacity-50"
+                    className="w-full h-24 bg-[#080809] border border-white/10 rounded-none p-4 font-mono text-xs text-white placeholder-slate-600 focus:ring-0 focus:border-[#10B981] outline-none transition-all resize-none disabled:opacity-50 shadow-inner"
                 />
 
                 <div className="flex items-center justify-between">
@@ -103,7 +103,7 @@ export default function FeedbackBox() {
                     <button
                         onClick={handleSubmit}
                         disabled={status === 'submitting' || message.trim().length < 5}
-                        className="px-4 py-2 bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white rounded-lg text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="px-4 py-2 bg-[#10B981]/10 border border-[#10B981]/30 hover:bg-[#10B981]/20 text-[#10B981] rounded-none font-mono text-[10px] tracking-widest uppercase transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-none"
                     >
                         {status === 'submitting' ? 'Sending...' : 'Submit Feedback'}
                     </button>

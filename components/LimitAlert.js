@@ -46,10 +46,10 @@ export default function LimitAlert({ error, onClose }) {
             className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] w-full max-w-lg px-4 pointer-events-none transition-all duration-300 ease-out ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
                 }`}
         >
-            <div className="bg-[#0f111a] border border-white/10 shadow-2xl shadow-black/50 rounded-2xl p-4 md:p-5 flex flex-col md:flex-row items-center gap-4 pointer-events-auto backdrop-blur-xl ring-1 ring-white/5">
+            <div className="bg-[#0f111a] border border-[#10B981]/50 shadow-none rounded-none p-4 md:p-5 flex flex-col md:flex-row items-center gap-4 pointer-events-auto backdrop-blur-xl ring-1 ring-white/5">
 
                 {/* Icon */}
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${error.upgrade ? 'bg-gradient-to-br from-purple-500/20 to-indigo-500/20 text-indigo-400' : 'bg-red-500/10 text-red-500'
+                <div className={`w-10 h-10 rounded-none flex items-center justify-center flex-shrink-0 ${error.upgrade ? 'bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/30' : 'bg-red-500/10 text-red-500 border border-red-500/30'
                     }`}>
                     {error.upgrade ? (
                         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -64,10 +64,10 @@ export default function LimitAlert({ error, onClose }) {
 
                 {/* Content */}
                 <div className="flex-1 text-center md:text-left">
-                    <h4 className="text-white font-semibold text-sm mb-0.5">
+                    <h4 className="text-[#10B981] font-mono text-xs tracking-widest uppercase mb-1">
                         {error.upgrade ? "Unlock Premium Features" : "Action Failed"}
                     </h4>
-                    <p className="text-slate-400 text-xs md:text-sm leading-relaxed">
+                    <p className="text-slate-400 text-xs font-mono uppercase tracking-wider leading-relaxed">
                         {error.message || "An unexpected error occurred."}
                     </p>
                 </div>
@@ -76,7 +76,7 @@ export default function LimitAlert({ error, onClose }) {
                 <div className="flex items-center gap-3 flex-shrink-0 w-full md:w-auto justify-center">
                     {error.upgrade && (
                         <Link href="/pricing" className="w-full md:w-auto">
-                            <Button size="sm" variant="gradient" className="w-full md:w-auto !py-2 shadow-lg shadow-indigo-500/20">
+                            <Button size="sm" variant="primary" className="w-full md:w-auto !py-2 shadow-none font-mono text-[10px] uppercase">
                                 Upgrade Now
                             </Button>
                         </Link>
@@ -84,7 +84,7 @@ export default function LimitAlert({ error, onClose }) {
 
                     <button
                         onClick={handleClose}
-                        className="p-2 rounded-lg hover:bg-white/5 text-slate-500 hover:text-white transition-colors"
+                        className="p-2 rounded-none hover:bg-white/5 text-slate-500 hover:text-white transition-colors"
                         aria-label="Dismiss"
                     >
                         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

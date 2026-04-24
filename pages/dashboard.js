@@ -678,48 +678,7 @@ export default function Dashboard() {
 
       const isInterview = createJson.is_interview === true || createJson.isInterview === true;
 
-      // 3) Prepare chunks
-      setStatus("creating-embeddings");
-      const chunks = chunkText(finalTranscript);
-      const normalizedChunks = (Array.isArray(chunks) && chunks.length > 0)
-        ? chunks.map((c, i) => ({ text: c.text ?? c, index: typeof c.index === "number" ? c.index : i }))
-        : [{ text: finalTranscript, index: 0 }];
-
-      log(`Prepared ${normalizedChunks.length} chunks`);
-
-      // 4) Send chunks in batches
-      const batchSize = 30;
-      const chunkBatches = batchesOf(normalizedChunks, batchSize);
-      log(`Sending embeddings in ${chunkBatches.length} batch(es)`);
-
-      const allResponses = [];
-      for (let i = 0; i < chunkBatches.length; i++) {
-        const batch = chunkBatches[i];
-        const payload = {
-          analysisId: newAnalysisId,
-          analysis_id: newAnalysisId,
-          transcript: finalTranscript,
-          text: finalTranscript,
-          chunks: batch,
-        };
-
-        const r2 = await fetch("/api/create-embeddings", {
-          method: "POST",
-          headers: authHeaders,
-          body: JSON.stringify(payload),
-        });
-
-        if (!r2.ok) {
-          const txt = await r2.text();
-          throw new Error(`create-embeddings batch ${i + 1} failed: ${txt}`);
-        }
-        const batchJson = await r2.json();
-        allResponses.push(batchJson);
-      }
-
-      setEmbeddingsResult(allResponses);
-
-      // 5) Extract Gaps Pause
+      // 3) Extract Gaps Pause
       setStatus("analyzing-gaps");
       const gapResp = await fetch("/api/analyze-gaps", {
         method: "POST",
@@ -758,8 +717,8 @@ export default function Dashboard() {
         const uxConfig = getEntitlementUX(errorObj.code);
         setEntitlementError(uxConfig);
 
-        // Special handling for disabled transcription
-        if (errorObj.code === "TRANSCRIPTION_DISABLED") {
+        // Special handling for disabled transcription and bot blocks
+        if (["TRANSCRIPTION_DISABLED", "YOUTUBE_BOT_BLOCK", "YOUTUBE_FETCH_ERROR", "VIDEO_TOO_LONG"].includes(errorObj.code)) {
           // We rely on LimitAlert (which uses entitlementError) to show the message
           // So we just return here to avoid setting generic error
           setStatus("idle");

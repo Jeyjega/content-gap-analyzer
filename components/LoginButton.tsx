@@ -21,10 +21,10 @@ export default function LoginButton({ className = "" }: { className?: string }) 
         <button
             onClick={handleLogin}
             disabled={isLoading}
-            className={`relative group bg-white text-slate-900 border border-slate-200 font-semibold py-3.5 px-6 rounded-xl hover:bg-slate-50 hover:border-slate-300 focus:ring-4 focus:ring-indigo-500/20 transition-all duration-200 flex items-center justify-center gap-3 w-full shadow-sm hover:shadow-md disabled:opacity-70 disabled:cursor-wait ${className}`}
+            className={`relative group bg-transparent text-white border border-white/20 font-mono text-xs uppercase tracking-widest py-3.5 px-6 rounded-none hover:bg-white/10 hover:border-[#10B981]/50 hover:text-[#10B981] focus:ring-0 transition-all duration-200 flex items-center justify-center gap-3 w-full shadow-none disabled:opacity-70 disabled:cursor-wait ${className}`}
         >
             {isLoading ? (
-                <div className="w-5 h-5 border-2 border-slate-900/30 border-t-slate-900 rounded-full animate-spin" />
+                <div className="w-5 h-5 border-2 border-white/30 border-t-[#10B981] rounded-none animate-spin" />
             ) : (
                 <svg className="w-5 h-5" viewBox="0 0 24 24">
                     <path

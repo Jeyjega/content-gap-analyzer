@@ -43,7 +43,7 @@ export default function TextPage({ title, description, children }) {
                         </p>
                         <Link
                             href="/"
-                            className="inline-flex items-center justify-center px-8 py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-500 transition-all shadow-lg shadow-indigo-500/25"
+                            className="inline-flex items-center justify-center px-8 py-3 bg-[#10B981] text-[#080809] rounded-none font-mono text-xs uppercase tracking-widest hover:bg-[#059669] transition-all shadow-none border border-[#10B981]"
                         >
                             Analyze Your Content Free
                         </Link>

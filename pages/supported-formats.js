@@ -37,7 +37,7 @@ export default function SupportedFormats() {
             {/* 3. Coming Soon */}
             <div className="border-t border-white/5 pt-10 mb-16 opacity-75">
                 <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
-                    Coming Soon <span className="text-xs font-normal px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">Roadmap</span>
+                    Coming Soon <span className="text-[10px] font-mono tracking-widest uppercase px-2 py-0.5 rounded-none bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/30">Roadmap</span>
                 </h2>
                 <div className="grid gap-6">
 
@@ -59,8 +59,8 @@ export default function SupportedFormats() {
             </div>
 
             {/* 4. Trust & Accuracy Statement */}
-            <div className="bg-white/5 border border-white/10 rounded-xl p-8">
-                <h3 className="text-lg font-bold text-white mb-3">Our Engineering Stance on Fidelity</h3>
+            <div className="bg-[#080809] border border-[#10B981]/30 rounded-none p-8">
+                <h3 className="text-sm font-mono tracking-widest uppercase text-[#10B981] mb-3">Our Engineering Stance on Fidelity</h3>
                 <p className="text-slate-400 text-sm leading-relaxed mb-0">
                     GapGens only analyzes formats that can be reliably converted into clean, structured text. We intentionally delay support for formats like PDF or raw audio until our extraction layer yields zero-defect results. If we cannot guarantee that the input text faithfully represents your source material, we will not run the analysis. Accuracy is the prerequisite for utility.
                 </p>

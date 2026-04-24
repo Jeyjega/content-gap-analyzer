@@ -11,10 +11,10 @@ export default function Footer({ isDark = true }) {
                     </div>
 
                     <div className="flex flex-wrap justify-center gap-6 md:gap-8">
-                        <Link href="/#" className="hover:text-white hover:underline transition-colors">SECURITY PROTOCOL</Link>
-                        <Link href="/documentation" className="hover:text-white hover:underline transition-colors">API DOCUMENTATION</Link>
-                        <Link href="/#" className="hover:text-white hover:underline transition-colors">SYSTEM STATUS</Link>
-                        <Link href="/terms" className="hover:text-white hover:underline transition-colors">TERMS OF ENGAGEMENT</Link>
+                        <Link href="/#" className="hover:text-white hover:underline transition-colors">HOW IT WORKS</Link>
+                        <Link href="/pricing" className="hover:text-white hover:underline transition-colors">PRICING</Link>
+                        <Link href="/dashboard" className="hover:text-white hover:underline transition-colors">SAMPLE OUTPUT</Link>
+                        <Link href="/#" className="hover:text-white hover:underline transition-colors">CONTACT</Link>
                     </div>
                 </div>
             </div>

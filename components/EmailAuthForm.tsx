@@ -99,27 +99,27 @@ export default function EmailAuthForm() {
                             onChange={(e) => setEmail(e.target.value)}
                             required
                             autoComplete="email"
-                            className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-transparent transition-all"
+                            className="w-full px-4 py-3 rounded-none bg-[#080809] border border-white/10 text-white font-mono text-sm placeholder-slate-500 focus:outline-none focus:border-[#10B981] focus:ring-0 transition-all shadow-inner"
                             placeholder="name@company.com"
                         />
                     </div>
                     {error && (
-                        <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-sm text-red-400">
+                        <div className="p-3 bg-red-500/10 border border-red-500/50 rounded-none text-xs font-mono text-red-400 uppercase tracking-widest">
                             {error}
                         </div>
                     )}
                     {message && (
-                        <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg text-sm text-green-400">
+                        <div className="p-3 bg-green-500/10 border border-green-500/50 rounded-none text-xs font-mono text-green-400 uppercase tracking-widest">
                             {message}
                         </div>
                     )}
                     <button
                         type="submit"
                         disabled={isLoading}
-                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-200 shadow-lg shadow-indigo-500/25 disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center"
+                        className="w-full bg-[#10B981] text-[#080809] hover:bg-[#059669] font-mono text-xs uppercase tracking-widest py-3 px-6 rounded-none transition-all duration-200 shadow-none border border-[#10B981] disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center"
                     >
                         {isLoading ? (
-                            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            <div className="w-5 h-5 border-2 border-[#080809]/30 border-t-[#080809] rounded-none animate-spin" />
                         ) : (
                             'Send Reset Instructions'
                         )}
@@ -153,7 +153,7 @@ export default function EmailAuthForm() {
                             onChange={(e) => setEmail(e.target.value)}
                             required
                             autoComplete="email"
-                            className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-transparent transition-all"
+                            className="w-full px-4 py-3 rounded-none bg-[#080809] border border-white/10 text-white font-mono text-sm placeholder-slate-500 focus:outline-none focus:border-[#10B981] focus:ring-0 transition-all shadow-inner"
                             placeholder="name@company.com"
                         />
                     </div>
@@ -185,19 +185,19 @@ export default function EmailAuthForm() {
                             required
                             minLength={6}
                             autoComplete={isSignUp ? "new-password" : "current-password"}
-                            className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-transparent transition-all"
+                            className="w-full px-4 py-3 rounded-none bg-[#080809] border border-white/10 text-white font-mono text-sm placeholder-slate-500 focus:outline-none focus:border-[#10B981] focus:ring-0 transition-all shadow-inner"
                             placeholder="••••••••"
                         />
                     </div>
 
                     {error && (
-                        <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-sm text-red-400">
+                        <div className="p-3 bg-red-500/10 border border-red-500/50 rounded-none text-xs font-mono text-red-400 uppercase tracking-widest">
                             {error}
                         </div>
                     )}
 
                     {message && (
-                        <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg text-sm text-green-400">
+                        <div className="p-3 bg-green-500/10 border border-green-500/50 rounded-none text-xs font-mono text-green-400 uppercase tracking-widest">
                             {message}
                         </div>
                     )}
@@ -205,10 +205,10 @@ export default function EmailAuthForm() {
                     <button
                         type="submit"
                         disabled={isLoading}
-                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-200 shadow-lg shadow-indigo-500/25 disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center"
+                        className="w-full bg-[#10B981] text-[#080809] hover:bg-[#059669] font-mono text-xs uppercase tracking-widest py-3 px-6 rounded-none transition-all duration-200 shadow-none border border-[#10B981] disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center"
                     >
                         {isLoading ? (
-                            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            <div className="w-5 h-5 border-2 border-[#080809]/30 border-t-[#080809] rounded-none animate-spin" />
                         ) : (
                             isSignUp ? 'Create Account' : 'Sign In'
                         )}

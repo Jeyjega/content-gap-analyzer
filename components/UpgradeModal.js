@@ -43,24 +43,24 @@ export default function UpgradeModal({
             />
 
             {/* Modal Content */}
-            <div className="relative bg-[#0b0c15] border border-white/10 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-scale-in">
+            <div className="relative bg-[#0b0c15] border border-[#10B981] rounded-none shadow-[0_0_50px_rgba(16,185,129,0.1)] max-w-md w-full overflow-hidden animate-scale-in">
 
                 {/* Header Graphic / Icon (Optional decorative element) */}
-                <div className="h-2 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500"></div>
+                <div className="h-2 bg-[#10B981]"></div>
 
                 <div className="p-8">
                     {/* Icon */}
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-indigo-500/20 to-purple-500/20 flex items-center justify-center mb-6 border border-white/5 mx-auto">
-                        <svg className="w-6 h-6 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <div className="w-12 h-12 rounded-none bg-[#10B981]/10 flex items-center justify-center mb-6 border border-[#10B981] mx-auto">
+                        <svg className="w-6 h-6 text-[#10B981]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
                         </svg>
                     </div>
 
-                    <h3 className="text-2xl font-display font-medium text-white mb-4 text-center leading-tight">
+                    <h3 className="text-xl font-mono tracking-widest uppercase text-white mb-4 text-center leading-tight">
                         {headline}
                     </h3>
 
-                    <div className="bg-white/5 rounded-xl p-5 border border-white/5 mb-8">
+                    <div className="bg-[#080809] rounded-none p-5 border border-[#10B981]/30 mb-8">
                         <ul className="space-y-3">
                             {bullets.length > 0 ? (
                                 bullets.map((txt, i) => (
@@ -98,8 +98,8 @@ export default function UpgradeModal({
 
                     <div className="space-y-3">
                         <Button
-                            variant="gradient"
-                            className="w-full text-lg shadow-lg shadow-indigo-500/20 py-3"
+                            variant="primary"
+                            className="w-full text-xs shadow-none py-3"
                             onClick={() => {
                                 window.location.href = '/pricing'; // Or handling via router if preferred
                             }}
@@ -109,7 +109,7 @@ export default function UpgradeModal({
 
                         <button
                             onClick={onClose}
-                            className="w-full py-2 text-sm text-slate-500 hover:text-white transition-colors font-medium"
+                            className="w-full py-2 text-xs font-mono tracking-widest uppercase text-slate-500 hover:text-white transition-colors"
                         >
                             {secondaryActionText}
                         </button>

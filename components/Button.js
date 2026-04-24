@@ -9,23 +9,23 @@ export default function Button({
     disabled,
     ...props
 }) {
-    const baseStyles = "inline-flex items-center justify-center rounded-lg font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]";
+    const baseStyles = "inline-flex items-center justify-center rounded-none font-mono text-xs uppercase tracking-widest transition-all duration-200 focus:outline-none focus:ring-0 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]";
 
     const variants = {
-        primary: "bg-slate-900 text-white hover:bg-slate-800 hover:shadow-lg hover:shadow-slate-900/20 focus:ring-slate-900 border border-transparent",
-        secondary: "bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:border-slate-300 hover:shadow-sm focus:ring-slate-200",
-        outline: "border border-slate-200 text-slate-600 hover:border-slate-300 hover:text-slate-900 hover:bg-slate-50 focus:ring-slate-200",
-        ghost: "text-slate-600 hover:bg-slate-100 hover:text-slate-900 focus:ring-slate-200",
-        danger: "bg-red-50 text-red-600 border border-red-100 hover:bg-red-100 focus:ring-red-500",
-        gradient: "bg-gradient-to-r from-indigo-600 to-violet-600 text-white hover:shadow-lg hover:shadow-indigo-500/25 border border-transparent",
-        white: "bg-white text-slate-900 hover:bg-indigo-50 border border-transparent focus:ring-white/20"
+        primary: "bg-[#10B981] text-[#080809] hover:bg-[#059669] hover:shadow-[0_0_20px_rgba(16,185,129,0.3)] border border-[#10B981]",
+        secondary: "bg-[#080809] text-white hover:bg-white/10 hover:text-[#10B981] border border-white/20 hover:border-[#10B981]/50 shadow-none",
+        outline: "border border-[#10B981] text-[#10B981] hover:bg-[#10B981]/10 shadow-none",
+        ghost: "text-slate-400 hover:text-white hover:bg-white/10 border border-transparent shadow-none",
+        danger: "bg-red-500/10 text-red-500 border border-red-500/50 hover:bg-red-500/20 shadow-none",
+        gradient: "bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/30 hover:bg-[#10B981]/20 shadow-none",
+        white: "bg-white text-[#080809] hover:bg-gray-200 border border-transparent shadow-none"
     };
 
     const sizes = {
-        sm: "px-3 py-1.5 text-xs",
-        md: "px-4 py-2 text-sm",
-        lg: "px-6 py-2.5 text-base",
-        xl: "px-8 py-3.5 text-lg"
+        sm: "px-4 py-2",
+        md: "px-6 py-3",
+        lg: "px-8 py-4",
+        xl: "px-10 py-5"
     };
 
     return (
