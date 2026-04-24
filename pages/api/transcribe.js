@@ -141,10 +141,16 @@ export default async function handler(req, res) {
           throw new Error("Missing APIFY_API_TOKEN");
         }
         const client = new ApifyClient({ token: process.env.APIFY_API_TOKEN });
+
+        // Wrap Apify call in a 55s timeout to fail fast before Vercel kills the function
+        const apifyTimeout = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Apify actor timed out after 55 seconds")), 55000)
+        );
         
-        const run = await client.actor("akash9078/youtube-transcript-extractor").call({
-          videoUrl: videoUrl
-        });
+        const run = await Promise.race([
+          client.actor("akash9078/youtube-transcript-extractor").call({ videoUrl }),
+          apifyTimeout
+        ]);
 
         const { items } = await client.dataset(run.defaultDatasetId).listItems();
         
@@ -157,14 +163,14 @@ export default async function handler(req, res) {
             source = "apify-extractor";
             console.log("Step 2 succeeded: Apify actor extracted transcript.");
           } else {
-            throw new Error("Apify dataset item did not contain transcript text.");
+            throw new Error(`Apify item keys: [${Object.keys(item).join(', ')}] — no transcript field found.`);
           }
         } else {
           throw new Error("Apify run returned empty dataset.");
         }
       } catch (step2Err) {
         console.log(`Step 2 failed: ${step2Err.message}`);
-        throw new Error("This video could not be transcribed. Please try another video.");
+        throw new Error(`Transcription failed. Step1: ${step1Err.message} | Step2: ${step2Err.message}`);
       }
     }
 
