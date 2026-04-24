@@ -102,6 +102,8 @@ export default function Dashboard() {
 
   const [usage, setUsage] = useState({ analyses: 0, youtube: 0 });
   const [userPlan, setUserPlan] = useState("free");
+  const [credits, setCredits] = useState({ used: 0, total: 30, remaining: 30, resetAt: null });
+  const [estimatedCost, setEstimatedCost] = useState(null);
 
 
 
@@ -135,6 +137,19 @@ export default function Dashboard() {
     "Almost there — final polish in progress."
   ];
 
+  // Word count helpers
+  const countWords = (text) =>
+    !text || text.trim() === "" ? 0 : text.trim().split(/\s+/).filter(Boolean).length;
+
+  const calcCreditCost = (wordCount, inputType) => {
+    if (!wordCount || wordCount <= 0) return 0;
+    let raw;
+    if (inputType === "blog") raw = (wordCount / 1000) * 1.2;
+    else if (inputType === "youtube") raw = (wordCount / 1000) * 1.5;
+    else raw = wordCount / 1000;
+    return Math.ceil(raw / 0.5) * 0.5;
+  };
+
   // Fetch usage and plan
   useEffect(() => {
     if (!user) return;
@@ -154,28 +169,37 @@ export default function Dashboard() {
       // 2. Get Usage
       const { data: usageData } = await supabase
         .from("freemium_usage")
-        .select("analyses_used, youtube_derivatives_used, reset_at")
+        .select("analyses_used, reset_at")
         .eq("user_id", user.id)
         .maybeSingle();
 
-      // Reset logic handling on client side for display accuracy (server handles actual reset)
-      let analysesUsed = usageData?.analyses_used || 0;
-      let youtubeUsed = usageData?.youtube_derivatives_used || 0;
+      const planCredits = plan === "pro" ? 100 : plan === "standard" ? 30 : 3;
+      let creditsUsed = parseFloat(usageData?.analyses_used) || 0;
       const resetAt = usageData?.reset_at ? new Date(usageData.reset_at) : new Date(0);
 
-      if (new Date() >= resetAt) {
-        analysesUsed = 0;
-        youtubeUsed = 0;
-      }
+      if (new Date() >= resetAt) creditsUsed = 0;
 
-      setUsage({
-        analyses: analysesUsed,
-        youtube: youtubeUsed
+      setUsage({ analyses: Math.floor(creditsUsed), youtube: 0 });
+      setCredits({
+        used: creditsUsed,
+        total: planCredits,
+        remaining: Math.max(0, planCredits - creditsUsed),
+        resetAt: usageData?.reset_at || null,
       });
     }
 
     fetchEntitlements();
   }, [user, analysisResult, generatedScript]); // Refresh when analysis completes
+
+  // Dynamic credit estimate for text mode
+  useEffect(() => {
+    if (mode === "text") {
+      const wc = countWords(userText);
+      setEstimatedCost(wc > 0 ? calcCreditCost(wc, "text") : null);
+    } else {
+      setEstimatedCost(null); // URL modes: cost known only after transcription
+    }
+  }, [userText, mode]);
 
   // Rotate helper messages
   useEffect(() => {
@@ -478,35 +502,45 @@ export default function Dashboard() {
   };
 
   const handleAnalyze = async () => {
-    // 1. Pre-check for TOTAL_LIMIT (Optimistic UI)
-    const limit = userPlan === "standard" ? 20 : 3;
-    // Pro is unlimited, checks bypass
-    const isLimitReached = (userPlan === "free" || userPlan === "standard") && usage.analyses >= limit;
-
     if (!session?.access_token) {
-      setError("User session invalid. Please log in again.");
+      setError({ message: "User session invalid. Please log in again." });
       return;
     }
 
-    if (isLimitReached) {
-      // MODAL REPLACES BANNER for this context
-      setUpgradeModalConfig({
-        headline: "Monthly Analysis Limit Reached",
-        bullets: [
-          `You’ve used all ${limit} analyses included in your ${userPlan} plan.`,
-          "Upgrade to Pro for UNLIMITED analyses.",
-          "Add up to 3 team members."
-        ],
-        primaryActionText: "Unlock Unlimited"
-      });
-      setUpgradeModalOpen(true);
-      return;
+    // 8,000-word hard cap for text mode
+    if (mode === "text") {
+      const wc = countWords(userText);
+      if (wc > 8000) {
+        setError({ message: "Your content exceeds the 8,000-word limit. Please trim your transcript or split it into parts and analyse each separately." });
+        return;
+      }
     }
+
+    // Credit limit pre-check (optimistic UI)
+    if (userPlan !== "pro") {
+      const cost = mode === "text" ? calcCreditCost(countWords(userText), "text") : 1;
+      if (credits.used + cost > credits.total) {
+        const resetDate = credits.resetAt ? new Date(credits.resetAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "next cycle";
+        setUpgradeModalConfig({
+          headline: "Insufficient Credits",
+          bullets: [
+            `This analysis requires ${cost} credits. You have ${credits.remaining.toFixed(1)} credits remaining.`,
+            `Your credits reset on ${resetDate}.`,
+            userPlan === "standard" ? "Upgrade to Pro for 100 credits/month." : "Upgrade to Standard for 30 credits/month."
+          ],
+          primaryActionText: "Upgrade Plan"
+        });
+        setUpgradeModalOpen(true);
+        return;
+      }
+    }
+
     const token = session.access_token;
     const authHeaders = {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${token}`
     };
+
 
     setStatus("transcribing"); // generic starting status
     setTranscript("");
@@ -798,6 +832,33 @@ export default function Dashboard() {
         {/* Ambient Subtle Glow */}
         <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-[#10B981]/5 blur-[150px] rounded-full pointer-events-none -z-10"></div>
         
+        {/* Credit Meter */}
+        {user && (
+          <div className="max-w-4xl mx-auto mb-8">
+            <div className="bg-[#111827]/80 border border-white/10 p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <span className="font-mono text-[10px] uppercase tracking-widest text-slate-500">CREDIT BALANCE</span>
+                <span className={`font-mono text-xs font-bold ${credits.remaining <= 0 ? "text-red-400" : credits.remaining / credits.total < 0.2 ? "text-amber-400" : "text-[#10B981]"}`}>
+                  {credits.used.toFixed(1)} of {credits.total} credits used this month
+                </span>
+              </div>
+              <div className="w-full sm:w-48 h-1.5 bg-[#080809] border border-white/10 relative overflow-hidden">
+                <div
+                  className={`absolute top-0 left-0 h-full transition-all duration-500 ${credits.remaining <= 0 ? "bg-red-500" : credits.remaining / credits.total < 0.2 ? "bg-amber-500" : "bg-[#10B981]"}`}
+                  style={{ width: `${Math.min(100, (credits.used / credits.total) * 100)}%` }}
+                />
+              </div>
+            </div>
+            {credits.remaining <= 0 && (
+              <div className="mt-1 font-mono text-[10px] text-red-400 text-right">
+                {userPlan === "pro"
+                  ? "You've used all your credits for this month. Contact us if you need a custom plan."
+                  : "You've used all your credits for this month. Upgrade to Pro for more analyses."}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Input Section */}
         <div className="max-w-4xl mx-auto mb-16 animate-slide-up">
           <div className="text-center mb-10">
@@ -943,28 +1004,28 @@ export default function Dashboard() {
                         },
                         {
                           id: "x",
-                          label: "X (TWITTER)",
-                          sub: "Short form",
+                          label: "X — SINGLE POST",
+                          sub: "Single post",
                           icon: "M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"
                         },
                         {
                           id: "x_thread",
-                          label: "X THREAD",
+                          label: "X — THREAD",
                           sub: "Deep dive",
                           icon: "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z",
                           paidOnly: true
                         },
                         {
                           id: "linkedin_carousel",
-                          label: "CAROUSEL",
-                          sub: "LinkedIn PDF",
+                          label: "LINKEDIN CAROUSEL",
+                          sub: "Carousel",
                           icon: "M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z",
                           paidOnly: true
                         },
                         {
                           id: "email_newsletter",
-                          label: "EMAIL",
-                          sub: "Newsletter",
+                          label: "NEWSLETTER",
+                          sub: "Email",
                           icon: "M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z",
                           paidOnly: true
                         }
@@ -1019,25 +1080,17 @@ export default function Dashboard() {
                       })}
                     </div>
 
-                    {((userPlan === "free") || (userPlan === "standard" && usage.analyses >= 15)) && (
-                      <div className="mt-4 text-center lg:text-left flex flex-col items-start gap-2">
-                        {userPlan === "free" && usage.analyses === 2 && (
-                          <span className="font-mono text-[10px] text-amber-500 uppercase tracking-widest pr-4 border-r border-amber-500/20">
-                            // 1 FREE ANALYSIS REMAINING
-                          </span>
-                        )}
-                        {userPlan === "standard" && usage.analyses === 19 && (
-                          <span className="font-mono text-[10px] text-amber-500 uppercase tracking-widest pr-4 border-r border-amber-500/20">
-                            // 1 ANALYSIS REMAINING
-                          </span>
-                        )}
-                        <span className="font-mono text-[10px] text-slate-500 uppercase tracking-widest">
-                          [{userPlan === "free" ? "FREE" : "STANDARD"}]: <span className={(userPlan === "free" && usage.analyses >= 3) || (userPlan === "standard" && usage.analyses >= 20) ? "text-red-500" : "text-white"}>
-                            {Math.min(usage.analyses, userPlan === "standard" ? 20 : 3)}
-                          </span>/{userPlan === "standard" ? 20 : 3} USED
-                        </span>
+                    {/* Credit estimate below platform selector */}
+                    {estimatedCost !== null ? (
+                      <div className="mt-3 font-mono text-[10px] text-slate-500">
+                        Estimated cost: <span className="text-[#10B981] font-bold">{estimatedCost} credits</span>
+                        &nbsp;&nbsp;|&nbsp;&nbsp;You have <span className={credits.remaining < estimatedCost ? "text-amber-400 font-bold" : "text-white font-bold"}>{credits.remaining.toFixed(1)} credits</span> remaining
                       </div>
-                    )}
+                    ) : mode !== "text" ? (
+                      <div className="mt-3 font-mono text-[10px] text-slate-600">
+                        Credit cost calculated after {mode === "youtube" ? "video is transcribed" : "article is extracted"}
+                      </div>
+                    ) : null}
                   </div>
 
                   {/* Right: Analyze Button */}
@@ -1045,18 +1098,18 @@ export default function Dashboard() {
                     <Button
                       onClick={handleAnalyze}
                       isLoading={isBusy}
-                      disabled={isInputEmpty() || ((userPlan === "free" && usage.analyses >= 3) || (userPlan === "standard" && usage.analyses >= 20))}
+                      disabled={isInputEmpty() || credits.remaining <= 0}
                       size="xl"
                       variant="primary"
-                      title={((userPlan === "free" && usage.analyses >= 3) || (userPlan === "standard" && usage.analyses >= 20)) ? "Monthly limit reached" : isInputEmpty() ? "Paste a link to analyze" : ""}
-                      className={`w-full lg:w-auto h-[72px] rounded-none border border-[#10B981] font-mono font-bold tracking-widest text-[12px] uppercase px-8 transition-all ${((userPlan === "free" && usage.analyses >= 3) || (userPlan === "standard" && usage.analyses >= 20))
+                      title={credits.remaining <= 0 ? "No credits remaining" : isInputEmpty() ? "Paste a link to analyze" : ""}
+                      className={`w-full lg:w-auto h-[72px] rounded-none border border-[#10B981] font-mono font-bold tracking-widest text-[12px] uppercase px-8 transition-all ${credits.remaining <= 0
                         ? "!bg-slate-900 !text-slate-600 !border-slate-800 !cursor-not-allowed opacity-50"
                         : "!bg-[#10B981] !text-[#080809] hover:!bg-[#0D9488] hover:!border-[#0D9488] shadow-none"
                         }`}
                     >
                       <div className="flex items-center gap-2">
                         {isBusy ? <span className="animate-pulse">_PROCESSING</span> : getAnalyzeButtonText()}
-                        {!((userPlan === "free" && usage.analyses >= 3) || (userPlan === "standard" && usage.analyses >= 20)) && !isBusy && (
+                        {credits.remaining > 0 && !isBusy && (
                           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
                           </svg>
@@ -1183,29 +1236,33 @@ export default function Dashboard() {
                       </h3>
                       <div className="flex flex-col gap-0 border border-white/5 bg-[#080809] flex-1 min-h-0 overflow-y-auto custom-scrollbar">
                         {analysisResult.gaps.map((g, i) => {
-                          const priority = i === 0 ? "CRITICAL" : i === 1 ? "MEDIUM" : "MINOR";
-                          const priorityColor = i === 0 ? "text-red-500 border-red-500/30 bg-red-500/10" : i === 1 ? "text-orange-500 border-orange-500/30 bg-orange-500/10" : "text-[#10B981] border-[#10B981]/30 bg-[#10B981]/10";
-                          const numColor = i === 0 ? "text-red-500" : i === 1 ? "text-orange-500" : "text-[#10B981]";
+                          const severity = (g.severity || (i === 0 ? "CRITICAL" : i === 1 ? "MEDIUM" : "MINOR")).toUpperCase();
+                          const priorityColor = severity === "CRITICAL" ? "text-red-500 border-red-500/30 bg-red-500/10" : severity === "MEDIUM" ? "text-orange-500 border-orange-500/30 bg-orange-500/10" : "text-[#10B981] border-[#10B981]/30 bg-[#10B981]/10";
+                          const numColor = severity === "CRITICAL" ? "text-red-500" : severity === "MEDIUM" ? "text-orange-500" : "text-[#10B981]";
+                          const accentColor = severity === "CRITICAL" ? "bg-red-500" : severity === "MEDIUM" ? "bg-orange-500" : "bg-[#10B981]";
 
                           return (
                             <div key={i} className={`p-6 border-b border-dashed border-white/10 hover:bg-white/5 transition-colors group relative ${i === analysisResult.gaps.length - 1 ? 'border-b-0' : ''}`}>
-                              <div className={`absolute top-0 left-0 w-0.5 h-full transition-all opacity-0 group-hover:opacity-100 ${i === 0 ? 'bg-red-500' : i === 1 ? 'bg-orange-500' : 'bg-[#10B981]'}`}></div>
+                              <div className={`absolute top-0 left-0 w-0.5 h-full transition-all opacity-0 group-hover:opacity-100 ${accentColor}`}></div>
                               
                               <div className="flex items-start gap-4">
                                 <div className={`font-mono text-base font-bold ${numColor} mt-0.5 w-6`}>
                                   [{String(i + 1).padStart(2, '0')}]
                                 </div>
                                 <div className="flex-1">
-                                  <div className="flex items-center justify-between mb-2">
+                                  <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
                                     <h4 className="font-sans font-bold text-white group-hover:text-slate-100 transition-colors text-lg uppercase tracking-tight">
                                       {g.title || `GAP DETECTED ${i + 1}`}
                                     </h4>
-                                    <span className={`font-mono text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 border ${priorityColor}`}>
-                                      {priority}
-                                    </span>
+                                    <div className="flex items-center gap-2 flex-shrink-0">
+                                      {g.category && <span className="font-mono text-[9px] text-slate-500 uppercase tracking-wider hidden sm:block">{g.category}</span>}
+                                      <span className={`font-mono text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 border ${priorityColor}`}>
+                                        {severity}
+                                      </span>
+                                    </div>
                                   </div>
-                                  {g.suggestion && (
-                                    <p className="text-slate-300 text-base leading-relaxed mt-2">{g.suggestion}</p>
+                                  {(g.description || g.suggestion) && (
+                                    <p className="text-slate-300 text-base leading-relaxed mt-2">{g.description || g.suggestion}</p>
                                   )}
                                 </div>
                               </div>
@@ -1285,11 +1342,11 @@ export default function Dashboard() {
                 >
                   <option value="youtube">YOUTUBE</option>
                   <option value="blog">BLOG</option>
-                  <option value="linkedin">LINKEDIN POST</option>
+                  <option value="linkedin">LINKEDIN — POST</option>
                   <option value="linkedin_carousel">LINKEDIN CAROUSEL</option>
-                  <option value="x">X (TWITTER)</option>
-                  <option value="x_thread">X (THREAD)</option>
-                  <option value="email_newsletter">EMAIL NEWSLETTER</option>
+                  <option value="x">X — SINGLE POST</option>
+                  <option value="x_thread">X — THREAD</option>
+                  <option value="email_newsletter">NEWSLETTER</option>
                 </select>
                 <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 group-hover:text-white transition-colors">
                   <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
@@ -1488,30 +1545,29 @@ export default function Dashboard() {
             <div className="bg-[#111827] border border-[#10B981] rounded-none max-w-4xl w-full overflow-hidden animate-scale-in relative shadow-[0_0_50px_rgba(16,185,129,0.1)]" onClick={(e) => e.stopPropagation()}>
               <div className="absolute top-0 left-0 w-1 h-full bg-[#10B981]"></div>
               <div className="p-8">
-                <div className="flex items-center gap-3 mb-6">
+                <div className="flex items-center gap-3 mb-2">
                   <div className="w-8 h-8 flex items-center justify-center flex-shrink-0 text-[#10B981]">
                     <span className="font-mono text-xl font-bold">{'>_'}</span>
                   </div>
                   <div>
-                    <span className="font-mono text-[9px] uppercase tracking-widest text-slate-500 font-bold">SYSTEM ALERT</span>
-                    <h3 className="text-xl font-display font-bold text-white tracking-tight uppercase italic">Choose Your Content Tone</h3>
+                    <span className="font-mono text-[9px] uppercase tracking-widest text-slate-500 font-bold">TONE SELECTION</span>
+                    <h3 className="text-xl font-display font-bold text-white tracking-tight uppercase italic">Choose Your Voice</h3>
                   </div>
                 </div>
                 <p className="text-slate-400 mb-6 leading-relaxed font-sans text-sm">
-                  Your derivative script will be written in this voice across every section.
+                  Tone changes how your script sounds — not what it says.
                 </p>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2 border border-white/10 p-2 bg-[#080809] max-h-[50vh] overflow-y-auto">
-                  
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 border border-white/10 p-2 bg-[#080809] max-h-[50vh] overflow-y-auto">
                   {[
-                    { id: "Conversational", title: "Conversational", desc: "Warm, direct, like talking to a smart friend" },
-                    { id: "Authoritative", title: "Authoritative", desc: "Declarative and confident, zero hedging" },
-                    { id: "Storytelling", title: "Storytelling", desc: "Narrative-first, emotional, scene-driven" },
-                    { id: "Educational", title: "Educational", desc: "Clear, structured, explains the why behind everything" },
-                    { id: "Professional", title: "Professional", desc: "Polished and credible, respects the reader's time" },
-                    { id: "Motivational", title: "Motivational", desc: "Action-oriented and grounded, builds real momentum" },
-                    { id: "Witty", title: "Witty", desc: "Sharp observations, dry humour, unexpected angles" },
-                    { id: "Analytical", title: "Analytical", desc: "Logical, precise, acknowledges nuance and tradeoffs" }
+                    { id: "Conversational", title: "Conversational", desc: "Direct, human, one-to-one." },
+                    { id: "Authoritative",  title: "Authoritative",  desc: "Confident, declarative, no hedging." },
+                    { id: "Storytelling",   title: "Storytelling",   desc: "Scene-driven, narrative arc, sensory detail." },
+                    { id: "Educational",    title: "Educational",    desc: "Step-by-step, clear reasoning, accessible." },
+                    { id: "Professional",   title: "Professional",   desc: "Formal, evidence-forward, structured." },
+                    { id: "Motivational",   title: "Motivational",   desc: "Stakes-first, urgent, action-oriented." },
+                    { id: "Witty",          title: "Witty",          desc: "Unexpected angles, precise, surprising." },
+                    { id: "Analytical",     title: "Analytical",     desc: "Data-first, logic-driven, precise." }
                   ].map(tone => (
                     <button
                       key={tone.id}
@@ -1525,7 +1581,6 @@ export default function Dashboard() {
                       </div>
                     </button>
                   ))}
-
                 </div>
 
                 <div className="mt-6 flex justify-end">
@@ -1535,7 +1590,7 @@ export default function Dashboard() {
                     className={`group font-mono font-bold text-sm uppercase px-8 py-3 flex items-center gap-2 transition-all relative overflow-hidden ${!selectedTone ? "bg-slate-800 text-slate-500 cursor-not-allowed" : "bg-[#10B981] text-black hover:bg-[#059669]"}`}
                   >
                     {!selectedTone ? null : <div className="absolute inset-x-0 top-0 h-px bg-white/50"></div>}
-                    <span>{selectedTone ? "GENERATE DERIVATIVE SCRIPT" : "SELECT A TONE FIRST"}</span>
+                    <span>{selectedTone ? "GENERATE SCRIPT" : "SELECT A TONE FIRST"}</span>
                     {selectedTone && (
                       <span className="relative flex h-2 w-2">
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-black opacity-40"></span>

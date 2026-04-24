@@ -1,30 +1,72 @@
 import { createClient } from "@supabase/supabase-js";
 import Anthropic from "@anthropic-ai/sdk";
-import { checkEntitlement, incrementUsage } from "../../lib/entitlements";
 
 export const config = {
-  maxDuration: 60, // Short timeout since it only does gaps analysis
+  maxDuration: 60,
 };
 
 const anthropic = new Anthropic();
 
-export default async function handler(req, res) {
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
+/**
+ * Parse plain-text gap output into structured JSON.
+ * Expected format per gap:
+ *   [NN] GAP TITLE
+ *   Severity: CRITICAL | MEDIUM | MINOR
+ *   Category: <category name>
+ *   Description: <2-4 sentences>
+ */
+function parseGapText(text) {
+  const gaps = [];
+  // Split on gap markers like [01], [02], etc.
+  const blocks = text.split(/\[(\d{2})\]/);
+
+  for (let i = 1; i < blocks.length; i += 2) {
+    const body = blocks[i + 1] || "";
+    const lines = body.split("\n").map(l => l.trim()).filter(Boolean);
+
+    if (!lines.length) continue;
+
+    const title = lines[0].trim();
+    let severity = "MINOR";
+    let category = "";
+    let description = "";
+    let inDescription = false;
+    const descLines = [];
+
+    for (const line of lines.slice(1)) {
+      if (/^severity:/i.test(line)) {
+        const match = line.match(/CRITICAL|MEDIUM|MINOR/i);
+        if (match) severity = match[0].toUpperCase();
+        inDescription = false;
+      } else if (/^category:/i.test(line)) {
+        category = line.replace(/^category:\s*/i, "").trim();
+        inDescription = false;
+      } else if (/^description:/i.test(line)) {
+        descLines.push(line.replace(/^description:\s*/i, "").trim());
+        inDescription = true;
+      } else if (inDescription) {
+        descLines.push(line);
+      }
+    }
+
+    description = descLines.join(" ").trim();
+
+    if (title) {
+      gaps.push({ title, severity, category, description });
+    }
   }
 
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
-  }
+  return gaps;
+}
+
+export default async function handler(req, res) {
+  if (req.method === "OPTIONS") return res.status(200).end();
+  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   try {
-    /* -------------------------------------------
-       AUTH
-    ------------------------------------------- */
+    /* AUTH */
     const authHeader = req.headers.authorization;
-    if (!authHeader) {
-      return res.status(401).json({ error: "Missing Authorization" });
-    }
+    if (!authHeader) return res.status(401).json({ error: "Missing Authorization" });
 
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -33,158 +75,128 @@ export default async function handler(req, res) {
     );
 
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
 
     const aId = req.body.analysisId || req.body.analysis_id;
-    if (!aId) {
-      return res.status(400).json({ error: "Missing analysisId" });
-    }
+    if (!aId) return res.status(400).json({ error: "Missing analysisId" });
 
-    /* -------------------------------------------
-       LOAD ANALYSIS
-    ------------------------------------------- */
+    /* LOAD ANALYSIS */
     const { data: analysis } = await supabase
       .from("analyses")
       .select("*")
       .eq("id", aId)
       .single();
 
-    if (!analysis) {
-      return res.status(404).json({ error: "Analysis not found" });
-    }
+    if (!analysis) return res.status(404).json({ error: "Analysis not found" });
 
     const transcript = analysis?.transcript || "";
+    if (transcript.length < 200) return res.status(400).json({ error: "Transcript too short" });
 
-    if (transcript.length < 200) {
-      return res.status(400).json({ error: "Transcript too short" });
-    }
+    const targetPlatform = req.body.targetPlatform || analysis?.metadata?.content_target || "youtube";
 
-    /* -------------------------------------------
-       GAP ANALYSIS PASS
-    ------------------------------------------- */
-    // ── CLAUDE-OPTIMISED GAP ANALYSIS PROMPT ──────────────────────────────
-    const gapSystemPrompt = `You are a senior content editor specialising in transcript-grounded gap analysis. Your task is to read a spoken transcript and identify every place where the speaker introduced a concept, claim, decision, or process but did not fully explain it.
+    /* ENGINE 1 — GAP ANALYSER PROMPT (GapGens v2.0) */
+    const gapSystemPrompt = `You are GapGens Gap Analyser — a senior content strategist and structural editor with 20 years of experience identifying exactly why content fails to build authority, trust, and action.
 
-<role_definition>
-You surface MISSING EXPLANATIONS — things the speaker brought up but left incomplete. You do not invent topics, add generic advice, or introduce anything the speaker never mentioned.
-</role_definition>
+Your job is to read the transcript provided and identify every gap that weakens the content. You are not summarising. You are diagnosing.
 
-<output_format>
-Respond with a single valid JSON object and nothing else — no markdown fences, no preamble, no trailing commentary.
+A gap is any place where the content makes a claim, implies a result, references an idea, or asks the audience to trust the speaker — without giving them the evidence, context, mechanism, or specificity to actually do so.
 
-{
-  "summary": "string — recount only what the speaker said, no interpretation",
-  "gaps": [
-    {
-      "title": "string — the specific missing detail, phrased from the speaker's own language",
-      "suggestion": "string — describe the ABSENCE using the pattern below",
-      "priority": "Critical | Medium | Minor",
-      "evidence": "string — exact quote or faithful paraphrase showing the speaker raised the topic but stopped short"
-    }
-  ],
-  "titles": ["string × 5 — drawn from transcript language"],
-  "keywords": ["string × 10 — taken directly from transcript vocabulary"]
-}
-</output_format>
+You identify gaps across these categories:
 
-<gap_validity_rules>
-A gap is valid ONLY when ALL three conditions are true:
-1. The speaker explicitly mentioned or clearly implied the topic.
-2. Important explanatory detail was left out.
-3. You can quote or faithfully paraphrase the exact transcript moment that proves it.
+CATEGORY 1 — EVIDENCE GAPS
+The content makes a claim without data, source, example, or proof.
+Example: "Most people fail at this" — fails counted? Source? Study?
 
-Reject any gap that fails even one condition.
-</gap_validity_rules>
+CATEGORY 2 — MECHANISM GAPS
+The content states a result but never explains how it is achieved.
+Example: "This strategy doubled my revenue" — what specifically caused the doubling?
 
-<suggestion_field_rules>
-The suggestion field MUST describe the absence — what the speaker left unexplained.
+CATEGORY 3 — CONTEXT GAPS
+The content assumes the audience has background knowledge they may not have.
+Terms, concepts, or situations introduced without sufficient grounding.
 
-FORBIDDEN suggestion patterns:
-- "Provide examples of…"
-- "Explain tools or methods…"
-- "Introduce steps for…"
-- "Share how to…"
+CATEGORY 4 — UNANCHORED CLAIM GAPS
+Vague quantifiers used where specificity is required.
+Trigger words: "pretty fast", "a lot", "very quickly", "most people", "significantly", "huge results", "in no time", "many experts", "recently".
+Every one of these must be flagged as a gap.
 
-REQUIRED suggestion patterns:
-- "The speaker mentions X but does not explain how or why."
-- "The rationale behind X decision is not clarified."
-- "The tradeoff between X and Y is left unaddressed."
-- "The specific criteria used for X are not stated."
-</suggestion_field_rules>
+CATEGORY 5 — STRUCTURAL GAPS
+The content is missing a section that the audience expects and needs.
+Examples: No clear hook. No stakes established. No call to action.
+Promised a framework but only delivered 2 of 5 steps.
 
-<gap_scaling_by_length>
-Scale gap count strictly to transcript length:
-- Under 300 words → 3–5 gaps maximum
-- 300–600 words → 5–8 gaps
-- 600–1500 words → 8–12 gaps
-- 1500–2500 words → 12–16 gaps
-- Over 2500 words → 16–25 gaps; split complex ideas into sub-gaps
+CATEGORY 6 — CREDIBILITY GAPS
+The speaker makes claims about their authority or results without grounding them in verifiable specifics.
+Example: "I've worked with hundreds of brands" — which brands? What results?
 
-After your first pass, if you have fewer than the minimum for your length tier, re-scan specifically for: unexplained decisions, unstated assumptions, missing tradeoffs, absent metrics, and skipped steps.
-</gap_scaling_by_length>
+CATEGORY 7 — TRANSITION GAPS
+Ideas jump without logical connection. The audience is expected to make a conceptual leap the content never bridges.
 
-<depth_decomposition>
-Break every compound sentence or paragraph into atomic ideas. Each distinct missing element earns its own gap entry. A single paragraph can yield multiple gaps if different aspects are under-explained. Do not collapse separate omissions into one.
+OUTPUT FORMAT — follow this format exactly for every gap identified:
 
-Ask these probing questions for every speaker claim:
-- What is the missing "why" behind this decision?
-- What steps were skipped in this process?
-- What metrics or numbers were implied but not given?
-- What assumption is stated without justification?
-- What tradeoff or alternative was hinted at but not compared?
-- What constraint (time, scale, resource) was mentioned without specifics?
-</depth_decomposition>
+[01] GAP TITLE
+Severity: CRITICAL / MEDIUM / MINOR
+Category: [Gap category name from above]
+Description: Exactly what is missing and precisely why it matters to the audience. Be specific. Reference the exact moment or line in the content where the gap occurs. Two to four sentences maximum.
 
-<hard_exclusions>
-- Do NOT create gaps for topics the speaker explicitly said they did not use.
-- Do NOT add generic best-practice advice (budgeting tools, success frameworks, etc.) unless the speaker named them.
-- Do NOT invent evidence. If you cannot find a supporting quote, discard the gap.
-- Do NOT repeat overlapping gaps. Each gap title must be distinct.
-</hard_exclusions>
+Severity definitions:
+CRITICAL — The gap directly undermines the core claim, promise, or credibility of the content. Without resolving it, the audience cannot trust or act on the content.
+MEDIUM   — The gap weakens authority or clarity but does not break the core argument. Resolution strengthens conviction.
+MINOR    — The gap is an opportunity to add depth or specificity. Missing it reduces richness but does not damage trust.
 
-<priority_definitions>
-Critical — a core claim or central idea is mentioned but left materially unclear.
-Medium — a supporting point is touched on without necessary depth.
-Minor — a clarifying detail that would help but is not essential to the main narrative.
-</priority_definitions>`;
+Rules:
+- Number gaps sequentially starting at [01]
+- Do not group multiple gaps under one ID
+- Do not output anything before the first gap
+- Do not output any summary or closing statement after the last gap
+- Minimum gaps to identify: 5
+- Maximum gaps to identify: 12
+- If fewer than 5 genuine gaps exist, note that the content is strong and identify what minor improvements remain`;
 
-    const gapUserMessage = `Analyse the following transcript and return the JSON gap report.\n\n<transcript>\n${transcript.slice(0, 4000)}\n</transcript>`;
+    const gapUserMessage = `Analyse this transcript and identify all content and structural gaps.
+Target platform: ${targetPlatform}
+
+TRANSCRIPT:
+${transcript.slice(0, 6000)}`;
 
     const gapResp = await anthropic.messages.create({
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 3000,
+      max_tokens: 4000,
       temperature: 0.2,
       system: [{ type: "text", text: gapSystemPrompt, cache_control: { type: "ephemeral" } }],
       messages: [{ role: "user", content: gapUserMessage }]
     });
 
-    let gapResponseText = gapResp.content[0].text;
-    const jsonMatch = gapResponseText.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      gapResponseText = jsonMatch[0];
-    }
-    const parsedAnalysis = JSON.parse(gapResponseText);
+    const rawGapText = gapResp.content[0].text;
+    const gaps = parseGapText(rawGapText);
+
+    // Fallback: generate summary from first gap descriptions
+    const summary = gaps.length > 0
+      ? `${gaps.length} content gaps identified. Key issues: ${gaps.filter(g => g.severity === "CRITICAL").map(g => g.title).slice(0, 2).join(", ") || gaps[0]?.title}.`
+      : "Gap analysis complete.";
+
+    // Generate title suggestions from transcript
+    const titleWords = transcript.split(/\s+/).slice(0, 50).join(" ");
+    const titles = []; // Kept empty to avoid extra API call; can be populated if needed
+    const keywords = []; // Same
 
     // Save to DB
     await supabase
       .from("analyses")
       .update({
-        summary: parsedAnalysis.summary,
-        gaps: parsedAnalysis.gaps,
-        titles: parsedAnalysis.titles,
-        keywords: parsedAnalysis.keywords
+        summary,
+        gaps,
+        titles,
+        keywords,
       })
       .eq("id", aId);
 
-    // Return the JSON directly (no NDJSON stream needed here)
     return res.status(200).json({
       status: "gaps_ready",
-      gaps: parsedAnalysis.gaps,
-      summary: parsedAnalysis.summary,
-      titles: parsedAnalysis.titles,
-      keywords: parsedAnalysis.keywords
+      gaps,
+      summary,
+      titles,
+      keywords,
     });
 
   } catch (err) {

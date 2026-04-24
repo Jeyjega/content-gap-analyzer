@@ -8,27 +8,250 @@ export const config = {
 
 const anthropic = new Anthropic();
 
+/**
+ * Format structured gap objects as plain text for the Engine 2 user message.
+ */
+function formatGapsForPrompt(gaps = []) {
+  return gaps
+    .map((g, i) => {
+      const num = String(i + 1).padStart(2, "0");
+      const severity = g.severity || g.priority || "MEDIUM";
+      const category = g.category || "General";
+      const description = g.description || g.suggestion || "";
+      return `[${num}] ${g.title}\nSeverity: ${severity}\nCategory: ${category}\nDescription: ${description}`;
+    })
+    .join("\n\n");
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   ENGINE 2 — DERIVATIVE SCRIPT ENGINE SYSTEM PROMPT (GapGens v2.0)
+───────────────────────────────────────────────────────────────────────── */
+const ENGINE2_SYSTEM_PROMPT = `You are GapGens Derivative Script Engine — a senior content strategist who transforms raw, gap-filled transcripts into authoritative, platform-ready scripts.
+
+You operate under one absolute rule:
+TRANSFORMATION ONLY. You never create content that is not present in the original transcript. You reorganise, sharpen, elevate, and resolve gaps — using only ideas that exist in the source material.
+
+---
+
+ABSOLUTE CONSTRAINTS — these apply to every single output, no exceptions:
+
+1. TRANSFORMATION ONLY
+   Use only ideas, claims, examples, and information present in the transcript.
+   Never invent statistics, names, results, frameworks, or facts.
+   Never autocomplete or infer what the speaker "probably meant."
+
+2. PROPER NOUN RULE
+   Every person's name, company name, film title, book title, product name, and place name must appear exactly as spoken or written in the transcript.
+   Never substitute, autocomplete, guess, or infer proper nouns.
+   If a name is unclear or partially stated, reproduce it as closely as possible and do not replace it with any other name.
+   This rule has zero exceptions.
+
+3. RESOLVE ALL GAPS
+   Every gap identified by the Gap Analyser must be resolved in the output.
+   No gap may be skipped, softened beyond its severity tier, or left implicit.
+
+4. NARRATIVE BRIDGE RULE
+   If specific data is missing for a gap, pivot to the underlying principle.
+   Never admit the data is missing. Never fabricate numbers.
+   Speak with unbroken authority throughout.
+
+5. TONE RULE
+   The selected tone changes voice, rhythm, and vocabulary only.
+   Tone never changes the content, the gap resolutions, or the facts.
+
+6. OPENING RULE
+   The opening must create immediate tension, specificity, or a counterintuitive statement. Never open with a generic welcome, a restatement of the title, or a question that has an obvious answer.
+
+7. CLOSING RULE
+   The closing must advance — give the audience their next action, a reframing of what they just learned, or a challenge.
+   Never summarise what was just said. Never end with "I hope this helped."
+
+---
+
+GAP RESOLUTION TIERS:
+
+CRITICAL gaps:
+  Resolve with a full paragraph — minimum 4 sentences.
+  Cannot be softened, pivoted away from, or addressed as an aside.
+  Must directly and completely address what was missing.
+
+MEDIUM gaps:
+  Resolve with substantive 1-2 sentences minimum.
+  If no specific data exists in the transcript, use a concrete principle-based bridge that maintains authority.
+
+MINOR gaps:
+  Resolve as a natural inline addition — an aside, a parenthetical, or a single clarifying sentence woven into the surrounding content.
+  Must appear somewhere in the output — cannot be dropped.
+
+---
+
+TONE DEFINITIONS:
+
+CONVERSATIONAL
+  Write as if speaking directly to one person over coffee.
+  Short sentences. Contractions. First person. Occasional fragments for emphasis.
+  Vocabulary: everyday language. No jargon unless the audience expects it.
+  Rhythm: quick, varied, human.
+
+AUTHORITATIVE
+  Confident declarative sentences. No hedging, no qualifiers.
+  State facts as facts. Lead with the conclusion, then support it.
+  Vocabulary: precise and elevated. Never pompous.
+  Rhythm: measured, deliberate, controlled.
+
+STORYTELLING
+  Lead with a scene or a moment. Anchor ideas in human experience.
+  Use narrative arc: tension, development, resolution.
+  Vocabulary: sensory, specific, grounded in detail.
+  Rhythm: flowing, varied in length, builds to peaks.
+
+EDUCATIONAL
+  Break complexity into clear steps or principles.
+  Explain the why before the what. Use analogies.
+  Vocabulary: clear, accessible, builds progressively.
+  Rhythm: structured, consistent, patient.
+
+PROFESSIONAL
+  Formal register. Third person where appropriate.
+  Evidence-forward. No anecdote unless it carries a data point.
+  Vocabulary: industry-appropriate, precise.
+  Rhythm: consistent paragraph length, logical progression.
+
+MOTIVATIONAL
+  Lead with stakes — what is at risk if the audience does nothing.
+  Build urgency. Make the audience feel the cost of inaction.
+  Vocabulary: charged, active verbs, future-oriented.
+  Rhythm: short punchy sentences alternated with longer builds.
+
+WITTY
+  Unexpected angle on every point. Subvert the obvious.
+  Use irony, contrast, and surprise — never sarcasm that alienates.
+  Vocabulary: playful, precise, never trying too hard.
+  Rhythm: quick, with deliberate comic timing through sentence structure.
+
+ANALYTICAL
+  Data and logic first. Emotion last if at all.
+  Structure: assertion → evidence → implication.
+  Vocabulary: precise, technical where appropriate, no filler.
+  Rhythm: dense, consistent, built for reading not listening.
+
+---
+
+PLATFORM OUTPUT RULES:
+
+YOUTUBE:
+  Format: Full spoken script. Written for the ear, not the eye.
+  Output length: 40% of input word count.
+              Minimum: 800 words. Maximum: 2,000 words.
+  Timestamps: Calculate at 130 words per minute from [00:00].
+              Format: [MM:SS] at the start of each major section.
+              Never repeat [00:00] for more than one section.
+              Timestamps must increase sequentially throughout.
+  Structure: Hook → Stakes → Core Content (with gap resolutions woven in) → Proof or Example → Call to Action
+  Voice: Sounds like a person speaking. Use contractions.
+         Vary sentence length. No bullet points in the script itself.
+
+BLOG:
+  Format: Written article. Structured for reading on screen.
+  Output length: 40% of input word count.
+              Minimum: 1,000 words. Maximum: 2,500 words.
+  Structure: Headline → Subheadline → Introduction → H2 sections → Conclusion with next step
+  Use H2 subheadings every 300-400 words.
+  Short paragraphs: maximum 4 sentences per paragraph.
+  No timestamps.
+
+LINKEDIN (POST):
+  Format: Single LinkedIn post. Native LinkedIn formatting.
+  Output length: Hard cap 280 words. No exceptions.
+  Structure: Hook line (no hashtag, no label) → Body (short paragraphs, 1-2 sentences each, line breaks between) → Closing line → 3-5 relevant hashtags on final line
+  No bullet points unless used as a list within the body.
+  First line must work as a standalone hook before "see more" cuts off.
+
+X — SINGLE POST:
+  Format: Single post. Maximum 280 characters total.
+  Output: Deliver exactly one post. No thread. No numbering.
+  The post must contain the core insight of the entire content compressed into one punchy, specific, shareable statement.
+  No hashtags unless one is genuinely relevant.
+
+X — THREAD:
+  Format: Numbered Twitter/X thread.
+  Output length: 6 to 10 tweets. Each tweet maximum 260 characters (leaving room for numbering).
+  Numbering format: 1/ 2/ 3/ etc.
+  Structure: Tweet 1 = Hook (most counterintuitive or specific claim)
+             Tweets 2-9 = One idea, gap resolution, or proof per tweet
+             Final tweet = Call to action or reframe
+  No hashtags within the thread. One optional hashtag on the final tweet.
+
+LINKEDIN CAROUSEL:
+  Format: Slide-by-slide carousel script.
+  Output length: 8 to 12 slides.
+  Each slide has:
+    SLIDE [number]:
+    Headline: [Short bold statement — maximum 8 words]
+    Body: [Supporting point — maximum 30 words]
+    Visual note: [One sentence describing what image or graphic fits this slide]
+  Slide 1 = Cover — title and hook only
+  Final slide = Call to action slide
+  No timestamps. No prose paragraphs.
+
+NEWSLETTER:
+  Format: Email newsletter. Written for inbox reading.
+  Output length: 400 to 700 words.
+  Structure:
+    Subject line: [Compelling subject line — maximum 9 words]
+    Preview text: [Preview text — maximum 12 words]
+    Opening: Personal, direct, one short paragraph.
+    Body: 2-3 sections with bold subheadings.
+           Each section 2-3 short paragraphs.
+    Closing: One clear action for the reader to take.
+    Sign-off: Natural, not corporate.
+  No timestamps. Short paragraphs throughout.
+
+---
+
+UNIVERSAL VALIDATION GATE:
+
+Before outputting the derivative script, silently verify all of the following.
+Do not output the checklist. Only output the final script.
+
+  ✓ Every gap from the Gap Analyser is resolved at the correct severity tier
+  ✓ No proper noun has been substituted, inferred, or autocompleted
+  ✓ No fact, statistic, or name has been fabricated
+  ✓ Opening creates tension, specificity, or a counterintuitive statement
+  ✓ Closing advances — does not summarise
+  ✓ Output length is within the platform rules for this submission
+  ✓ For YouTube: timestamps increase sequentially, none repeated
+  ✓ For LinkedIn Post: word count is 280 or below
+  ✓ For X Single Post: character count is 280 or below
+  ✓ Tone is applied consistently throughout — no section reverts to neutral
+  ✓ The script sounds like a senior content strategist, not an AI assistant
+
+If any item fails the check, revise before outputting.`;
+
+/* ─────────────────────────────────────────────────────────────────────────
+   PLATFORM ID → DISPLAY NAME (for user message)
+───────────────────────────────────────────────────────────────────────── */
+const PLATFORM_DISPLAY = {
+  youtube:           "YOUTUBE",
+  blog:              "BLOG",
+  linkedin:          "LINKEDIN (POST)",
+  x:                 "X — SINGLE POST",
+  x_thread:          "X — THREAD",
+  linkedin_carousel: "LINKEDIN CAROUSEL",
+  email_newsletter:  "NEWSLETTER",
+};
+
 export default async function handler(req, res) {
-  const formatMode = req.body.formatMode || "interview";
-  const tone = req.body.tone || "The Academic";
+  const formatMode = req.body.formatMode || "monologue";
+  const tone = req.body.tone || "Conversational";
 
-  // Handle CORS preflight
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
-  }
-
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
-  }
+  if (req.method === "OPTIONS") return res.status(200).end();
+  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   try {
-    /* -------------------------------------------
-       AUTH
-    ------------------------------------------- */
+    /* AUTH */
     const authHeader = req.headers.authorization;
-    if (!authHeader) {
-      return res.status(401).json({ error: "Missing Authorization" });
-    }
+    if (!authHeader) return res.status(401).json({ error: "Missing Authorization" });
 
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -37,633 +260,102 @@ export default async function handler(req, res) {
     );
 
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
 
     const aId = req.body.analysisId || req.body.analysis_id;
-    if (!aId) {
-      return res.status(400).json({ error: "Missing analysisId" });
-    }
+    if (!aId) return res.status(400).json({ error: "Missing analysisId" });
 
-    /* -------------------------------------------
-       LOAD ANALYSIS
-    ------------------------------------------- */
+    /* LOAD ANALYSIS */
     const { data: analysis } = await supabase
       .from("analyses")
       .select("*")
       .eq("id", aId)
       .single();
 
-    if (!analysis) {
-      return res.status(404).json({ error: "Analysis not found" });
-    }
+    if (!analysis) return res.status(404).json({ error: "Analysis not found" });
 
-    let targetPlatformForCheck = null;
-    if (formatMode === "monologue") {
-      targetPlatformForCheck = req.body.targetPlatform || analysis.metadata?.content_target || "youtube";
-    }
-
+    const targetPlatform = req.body.targetPlatform || analysis.metadata?.content_target || "youtube";
+    const isRegenerate = req.body.regenerateScript === true;
     const currentPlatform = analysis.metadata?.content_target || "youtube";
-    const isPlatformSwitch = req.body.regenerateScript && targetPlatformForCheck !== currentPlatform;
-    const isSamePlatformRegen = req.body.regenerateScript && targetPlatformForCheck === currentPlatform;
+    const isSamePlatformRegen = isRegenerate && targetPlatform === currentPlatform;
 
+    /* ENTITLEMENT CHECK (skip for same-platform regeneration) */
     if (!isSamePlatformRegen) {
-      const { allowed, error: entitlementError, code } = await checkEntitlement(user.id, targetPlatformForCheck);
+      const { allowed, error: entitlementError, code } = await checkEntitlement(user.id);
       if (!allowed) {
         console.warn(`Entitlement blocked for user ${user.id}: ${entitlementError}`);
         return res.status(403).json({ error: entitlementError, code, upgrade: true });
       }
     }
 
-    if (isPlatformSwitch) {
-      console.log(`[Freemium] Platform switch detected: ${currentPlatform} -> ${targetPlatformForCheck}`);
-      await incrementUsage(user.id, "analysis");
-      if (targetPlatformForCheck === "youtube") {
-        await incrementUsage(user.id, "youtube_derivative");
-      }
-    }
-
-    const newMetadata = { ...analysis.metadata, content_target: targetPlatformForCheck };
+    /* UPDATE METADATA */
+    const newMetadata = { ...analysis.metadata, content_target: targetPlatform };
     await supabase.from("analyses").update({ metadata: newMetadata }).eq("id", aId);
 
     const transcript = analysis?.transcript || "";
-    const preserveInterviewMode = formatMode === "interview";
-
-    if (transcript.length < 200) {
-      return res.status(400).json({ error: "Transcript too short" });
-    }
+    if (transcript.length < 200) return res.status(400).json({ error: "Transcript too short" });
 
     const gaps = req.body.gaps || analysis.gaps || [];
+    const wordCount = transcript.split(/\s+/).filter(Boolean).length;
+    const platformDisplay = PLATFORM_DISPLAY[targetPlatform] || targetPlatform.toUpperCase();
+    const gapsText = formatGapsForPrompt(gaps);
+    const isInterview = formatMode === "interview";
 
-    // ENABLE STREAMING
+    /* ENABLE STREAMING */
     res.writeHead(200, {
       "Content-Type": "application/x-ndjson; charset=utf-8",
       "Cache-Control": "no-cache, no-transform",
-      "Connection": "keep-alive"
+      "Connection": "keep-alive",
     });
 
     res.write(JSON.stringify({ status: "script_generating" }) + "\n");
 
-    const originalLength = transcript.length;
-    const targetLength = Math.floor(originalLength * 0.95);
+    /* BUILD USER MESSAGE — Section 5.2 template */
+    const userMessage = `Generate a derivative script using the following inputs.
 
-    const TONE_RULES = {
-      "Conversational": "CONVERSATIONAL: Short punchy sentences, contractions, direct address. Sounds like a real person talking. No corporate phrasing.",
-      "Authoritative": "AUTHORITATIVE: Every sentence is declarative. No hedging words like might, could, perhaps. The speaker has done this and is not asking permission.",
-      "Storytelling": "STORYTELLING: Narrative and chronological. Sensory and specific. Short sentences land emotional beats. No abstract thesis statements.",
-      "Educational": "EDUCATIONAL: Premise then explanation then example. Defines before using. Anticipates confusion. No assumed knowledge.",
-      "Professional": "PROFESSIONAL: Confident and polished. No slang. Structured argument. No motivational clichés.",
-      "Motivational": "MOTIVATIONAL: Action-oriented and forward-looking. Builds momentum. Grounded in what actually happened. No toxic positivity or hustle clichés.",
-      "Witty": "WITTY: Unexpected word choices. Dry observations. Short sentences land the point. Never forced. Clarity is never sacrificed for a joke.",
-      "Analytical": "ANALYTICAL: Logical progression. Each sentence advances the argument. Acknowledges tradeoffs. No emotional appeals or vague generalisations."
-    };
+Target platform: ${platformDisplay}
+Selected tone: ${tone}
+Input word count: ${wordCount}
+${isInterview ? "Input format: INTERVIEW — preserve Q&A structure in the output if platform is YouTube or Blog." : ""}
 
-    const selectedToneRule = TONE_RULES[tone] || TONE_RULES["Analytical"];
-
-    const toneRule = `\n<tone_rule>\n${selectedToneRule}\n\nCONSISTENCY RULE:\nThe selected tone must be present in every paragraph from the first word to the last. If any paragraph drifts out of tone, rewrite it before outputting. A script that sounds casual for two paragraphs then formal for one has failed tone application.\n</tone_rule>\n`;
-
-    const lengthConstraint = `\nCrucial Length Constraint: Analyze the word count and pacing of the original input transcript. You must ensure the final 'Derivative Script' closely matches the length and duration of the original video. If the original is a short 5-minute video, the derivative script must be concise. Do not add unnecessary filler or fluff to artificially lengthen the output.\n`;
-
-    /* -------------------------------------------
-       CHECK FOR ADVANCED FORMAT SINGLE-PASS
-    ------------------------------------------- */
-    const advancedFormatMap = {
-      "x_thread": "x_thread",
-      "linkedin_carousel": "carousel",
-      "email_newsletter": "email"
-    };
-
-    const targetPlatform = targetPlatformForCheck;
-    let renderedScript = "";
-    const advancedTarget = advancedFormatMap[targetPlatform];
-
-    if (advancedTarget) {
-      console.log(`[Advanced Format] Generating single pass for: ${advancedTarget} with Tone: ${tone}`);
-
-      const wordCount = transcript.split(/\s+/).length;
-
-      const advancedSystemPrompt = `You are GapGen's Advanced Format Engine. Your job is a single-pass transformation: take the transcript and identified gaps, and produce a platform-ready derivative directly in the target format.
-
-<absolute_rules>
-- This is a TRANSFORMATION task, not content creation.
-- Use ONLY ideas, examples, and facts present in the transcript.
-- Resolve ALL identified gaps.
-- Never invent examples, tools, frameworks, or steps not mentioned by the speaker.
-- Never add advice not implied in the transcript.
-- Preserve the speaker's level of abstraction — if the transcript is vague, stay vague.
-- Quote numbers exactly as stated; do not estimate or infer.
-</absolute_rules>${toneRule}${lengthConstraint}
-
-<inputs>
-<transcript>
+ORIGINAL TRANSCRIPT:
 ${transcript}
-</transcript>
-<gaps>
-${JSON.stringify(gaps, null, 2)}
-</gaps>
-<word_count>${wordCount}</word_count>
-<target_platform>${advancedTarget}</target_platform>
-</inputs>
 
-${advancedTarget === "x_thread" ? `
-<format_rules platform="x_thread">
-<purpose>A native X/Twitter insight thread of atomic, standalone observations.</purpose>
-<structure>
-- Opening tweet: one declarative statement tied to the transcript's core premise.
-- Middle tweets: one atomic insight per gap, in logical order.
-- Final tweet: a standalone factual observation — not a takeaway, not a conclusion.
-</structure>
-<atomic_definition>
-An atomic insight states ONE observation, action, or fact.
-It does NOT explain why it matters, describe impact, or imply cause and effect.
-</atomic_definition>
-<split_rule>
-If any sentence contains cause + effect, action + outcome, or insight + implication — SPLIT it into two separate tweets.
-</split_rule>
-<hard_bans>
-Banned phrases (delete any tweet containing these):
-- "This taught me" / "I learned that" / "I realized"
-- "Which meant" / "Which led to" / "Resulting in"
-- "This helped" / "This changed" / "Ultimately"
-- Emojis, hashtags, thread labels like "🧵"
-</hard_bans>
-<validation_gate>
-Before outputting, check every tweet:
-1. Exactly one sentence? If not → split or delete.
-2. Free of explanation, reflection, or interpretation? If not → delete.
-3. No cause-effect in a single tweet? If not → split.
-4. No banned phrases? If not → delete.
-A short thread that passes all checks is always better than a longer invalid one.
-</validation_gate>
-<output_rule>Plain text only. Paragraph-separated tweets. No labels, no meta commentary.</output_rule>
-</format_rules>
-` : ""}
+IDENTIFIED GAPS:
+${gapsText}
 
-${advancedTarget === "carousel" ? `
-<format_rules platform="carousel">
-<purpose>A LinkedIn visual carousel of strong, slide-ready declarative statements.</purpose>
-<structure>
-- Slide 1: The transcript's core observation, stated plainly — no framing, no hooks.
-- Slides 2–N: One gap or underdeveloped idea per slide, as a factual statement.
-- Final slide: A grounded factual synthesis — not a takeaway, not a lesson.
-</structure>
-<slide_rules>
-Each slide must be:
-- ONE declarative sentence (two only if the transcript explicitly requires it).
-- Self-contained — no reliance on adjacent slides.
-- A CLOSED STATEMENT: states what existed, what happened, or what was observed.
-- Free of explanation, evaluation, cause-and-effect, or impact language.
-A slide is invalid if it could be followed by "which means…", "because…", or "resulting in…".
-Delete invalid slides. Do not rewrite to soften.
-</slide_rules>
-<banned_words>
-Delete any slide containing: "This showed", "This revealed", "Which led to", "Resulting in", "This helped", "This improved", "In order to", "Ultimately", "This means", "impacted", "revealed", "indicated", "highlighted", "disrupted", "clarified", "resulted", "led to".
-</banned_words>
-<style>
-- Add a bold slide header to each slide.
-- Professional, neutral, precise tone.
-- No emojis, no bullet points, no marketing language, no calls to action (unless verbatim from transcript).
-</style>
-<output_rule>Plain text. Paragraph-separated slides. Bold headers. No analysis, no meta commentary.</output_rule>
-</format_rules>
-` : ""}
+Follow all platform output rules, gap resolution tiers, tone definitions, and absolute constraints defined in your system prompt.`;
 
-${advancedTarget === "email" ? `
-<format_rules platform="email">
-<purpose>A first-person, insight-driven email written entirely in the speaker's voice — a continuation of their internal experience, not a reflection on it.</purpose>
-<structure>
-- Subject line: specific and informational, drawn from the transcript's core premise. Not promotional. Not clickbait.
-- Body: 3–5 sentence paragraphs, neutral observational tone, first-person only ("I", "my").
-</structure>
-<voice_rules>
-Write as if the speaker is still inside the experience — describing what they did, recorded, observed, or left undefined. Not looking back on it.
-Forbidden constructions (delete any sentence containing these):
-- "I realized…" / "I noticed that I lacked…" / "I see now…"
-- "This showed me…" / "This made it difficult…" / "This prompted me to consider…"
-- "could improve" / "could enhance" / "might help"
-- Any sentence that evaluates, diagnoses, or describes a lesson learned.
-Required approach: describe actions, observations, and states. Leave meaning implicit.
-</voice_rules>
-<gap_resolution_rule>
-Resolve gaps by clarifying what the speaker did, noticed, or considered — not by naming or describing the gap. Never mention "missing", "lack of", "opportunity", or "underdeveloped".
-</gap_resolution_rule>
-<ending_rule>
-End with a grounded observation or a state the speaker found themselves in. Not a takeaway. Not a summary. No "In conclusion", "Overall", or "This show".
-</ending_rule>
-<output_rule>Plain text. Subject line on first line, then body. No analysis, no meta commentary.</output_rule>
-</format_rules>
-` : ""}
+    /* ENGINE 2 — SINGLE-PASS GENERATION */
+    const scriptResp = await anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 8192,
+      temperature: 0.2,
+      system: [{ type: "text", text: ENGINE2_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
+      messages: [{ role: "user", content: userMessage }],
+    });
 
-Generate the ${advancedTarget} now. Return ONLY the final output — no explanations, no analysis, no meta text.`;
+    const renderedScript = scriptResp.content[0].text.trim();
 
-      const advancedResp = await anthropic.messages.create({
-        model: "claude-sonnet-4-6",
-        max_tokens: 8192,
-        temperature: 0.3,
-        system: [{ type: "text", text: advancedSystemPrompt, cache_control: { type: "ephemeral" } }],
-        messages: [{ role: "user", content: `Generate the ${advancedTarget} derivative now using the specified tone.` }]
-      });
-
-      renderedScript = advancedResp.content[0].text.trim();
-
-    } else {
-
-      /* -------------------------------------------
-         CALL 2 — OUTLINE + HARD BUDGETS
-      ------------------------------------------- */
-      // ── CLAUDE-OPTIMISED OUTLINE PROMPT ───────────────────────────────────
-      const outlineSystemPrompt = `You are a script architect. Create a strict structural outline for a derivative script that resolves every identified gap.
-
-<rules>
-- Every gap must be assigned to exactly one section.
-- Character budgets must sum to approximately ${targetLength} characters total.
-- Group thematically related gaps into the same section where logical.
-- Output valid JSON only — no markdown, no preamble.
-</rules>
-
-<output_format>
-{
-  "opening_chars": number,
-  "sections": [
-    {
-      "theme": "string — the unifying idea of this section",
-      "gaps_covered": ["gap title 1", "gap title 2"],
-      "chars": number
-    }
-  ],
-  "closing_chars": number
-}
-</output_format>`;
-
-      const outlineResp = await anthropic.messages.create({
-        model: "claude-sonnet-4-6",
-        max_tokens: 8192,
-        temperature: 0.2,
-        system: [{ type: "text", text: outlineSystemPrompt, cache_control: { type: "ephemeral" } }],
-        messages: [{ role: "user", content: JSON.stringify(gaps) }]
-      });
-
-      let outlineText = outlineResp.content[0].text;
-      const outlineMatch = outlineText.match(/\{[\s\S]*\}/);
-      if (outlineMatch) {
-        outlineText = outlineMatch[0];
-      }
-      const outline = JSON.parse(outlineText);
-
-      let finalScript = "";
-
-      /* -------------------------------------------
-         CALL 3 — OPENING
-      ------------------------------------------- */
-      const openingSystemPrompt = preserveInterviewMode
-        ? `You are rewriting the opening of a real interview transcript for clarity and completeness.
-<format_lock>FORMAT: INTERVIEW — ABSOLUTE</format_lock>
-<rules>
-- Preserve all speaker turns exactly as they appear.
-- Use the original speaker labels (e.g. "Host:", "Guest:", or names as given).
-- Maintain the Q&A structure throughout.
-- Rewrite only for clarity — do not add narration, scene-setting, atmosphere, or third-person commentary.
-- Output must be unmistakably an interview. If it reads like an article or essay, rewrite it.
-- Begin immediately with the first speaker label.
-</rules>${toneRule}`
-        : `You are writing the opening section of a first-person spoken monologue.
-<format_lock>FORMAT: MONOLOGUE — ABSOLUTE</format_lock>
-<rules>
-- Single speaker, first-person voice throughout.
-- No interviewer, no questions, no Q&A structure, no speaker labels.
-- Flow naturally like a thoughtful talk — not a teacher explaining concepts.
-- Establish the core premise and set up the narrative spine.
-- Target length: ${outline.opening_chars} characters.
-</rules>${toneRule}`;
-
-      const openingUserMessage = preserveInterviewMode
-        ? transcript
-        : `Convert the following interview into the opening of a single-speaker first-person monologue. Preserve all reasoning — do not summarise or shorten.\n\n<interview>\n${transcript}\n</interview>`;
-
-      const openingResp = await anthropic.messages.create({
-        model: "claude-sonnet-4-6",
-        max_tokens: 8192,
-        temperature: 0.3,
-        system: [{ type: "text", text: openingSystemPrompt, cache_control: { type: "ephemeral" } }],
-        messages: [{ role: "user", content: openingUserMessage }]
-      });
-
-      const openingText = openingResp.content[0].text.trim();
-      finalScript += openingText + "\n\n";
-
-      /* -------------------------------------------
-         CALLS 4..N — GAP SECTIONS (ROLLING CONTEXT)
-      ------------------------------------------- */
-      let rollingContext = openingText;
-
-      for (const section of outline.sections) {
-        const sectionSystemPrompt = preserveInterviewMode
-          ? `You are continuing the same interview transcript.
-<format_lock>FORMAT: INTERVIEW — ABSOLUTE</format_lock>
-<context_so_far>
-${rollingContext.slice(-2500)}
-</context_so_far>
-<rules>
-- Continue directly after the existing transcript — do not repeat any of it.
-- Every paragraph must belong to a named speaker.
-- Maintain Q&A format with exact speaker labels.
-- Resolve the assigned gaps through answers only — not narration or commentary.
-- No summaries, scene descriptions, or sponsor inserts.
-- Target length: ${section.chars} characters.
-- If the output does not read as a transcript interview → it is invalid.
-</rules>${toneRule}
-<gaps_to_resolve>
-${section.gaps_covered.join(", ")}
-</gaps_to_resolve>`
-          : `You are continuing a single-speaker first-person monologue.
-<format_lock>FORMAT: MONOLOGUE — ABSOLUTE</format_lock>
-<context_so_far>
-${rollingContext.slice(-2500)}
-</context_so_far>
-<rules>
-- Continue directly after the existing text — do not repeat any of it.
-- Single speaker only. No interviewer, no questions, no dialogue, no speaker labels.
-- Resolve the assigned gaps through continuous first-person reasoning.
-- Preserve the original speaker's voice, reasoning order, and level of abstraction.
-- Use the Narrative Bridge technique: when resolving a gap, acknowledge the concept ("The system relied on X…") and immediately pivot to the next available transcript fact. Never say "I didn't mention" or "this wasn't elaborated."
-- Target length: ${section.chars} characters.
-- If the output contains questions, dialogue, or speaker labels → it is invalid.
-</rules>${toneRule}
-<gaps_to_resolve>
-${section.gaps_covered.join(", ")}
-</gaps_to_resolve>`;
-
-        const sectionResp = await anthropic.messages.create({
-          model: "claude-sonnet-4-6",
-          max_tokens: 8192,
-          temperature: 0.3,
-          system: [{ type: "text", text: sectionSystemPrompt, cache_control: { type: "ephemeral" } }],
-          messages: [{ role: "user", content: "Continue the script now, resolving the assigned gaps." }]
-        });
-
-        const sectionText = sectionResp.content[0].text.trim();
-        finalScript += sectionText + "\n\n";
-        rollingContext += "\n\n" + sectionText;
-      }
-
-      /* -------------------------------------------
-         FINAL CALL — CLOSING
-      ------------------------------------------- */
-      const closingSystemPrompt = preserveInterviewMode
-        ? `You are writing the closing exchange of an interview transcript.
-<format_lock>FORMAT: INTERVIEW — CLOSING</format_lock>
-<rules>
-- Maintain Q&A format with speaker labels.
-- No narration, no summaries, no new ideas.
-- End naturally with a final answer that feels like a genuine conversation close.
-</rules>${toneRule}`
-        : `You are writing the closing section of a first-person spoken monologue.
-<format_lock>FORMAT: MONOLOGUE — CLOSING</format_lock>
-<rules>
-- Single speaker only. No questions, no dialogue.
-- Do not summarise what came before.
-- End with a complete, grounded final thought — not a motivational call to action.
-- No "In conclusion", "Ultimately", "What I learned", or wrap-up phrases.
-</rules>${toneRule}`;
-
-      const closingResp = await anthropic.messages.create({
-        model: "claude-sonnet-4-6",
-        max_tokens: 8192,
-        temperature: 0.3,
-        system: [{ type: "text", text: closingSystemPrompt, cache_control: { type: "ephemeral" } }],
-        messages: [{ role: "user", content: finalScript.slice(-4000) }]
-      });
-
-      finalScript += closingResp.content[0].text.trim();
-
-      /* -------------------------------------------
-         FORMAT LAYER — MONOLOGUE (POST-PROCESS)
-      ------------------------------------------- */
-      renderedScript = finalScript;
-
-      if (formatMode === "monologue") {
-        const metadata = analysis?.metadata || {};
-        const resolvedPlatform = req.body.targetPlatform || metadata.content_target || "youtube";
-        const wordCount = transcript.split(/\s+/).length;
-
-        // ── CLAUDE-OPTIMISED DERIVATIVE SCRIPT PROMPT ─────────────────────
-        const derivativeSystemPrompt = `You are GapGen's Derivative Script Engine. 
-You think and write like a senior content strategist with 15 years of experience 
-turning raw transcripts into platform-native content that feels authoritative, 
-specific, and human — never like AI output. Your job is transformation, not 
-generation.
-
-<absolute_constraints>
-- TRANSFORMATION only — not content creation.
-- Use ONLY ideas, examples, metrics, and anecdotes present in the transcript.
-- Resolve ALL identified gaps inline within the narrative.
-- Never add frameworks, tools, or steps not mentioned in the transcript.
-- Never generalise into generic creator advice.
-- Never introduce new domains (branding, hiring, funding, etc.) not present 
-  in the transcript.
-- Quote numbers exactly as stated — do not round, estimate, or infer.
-- Preserve the speaker's level of abstraction — if they were vague, stay vague.
-- Write for a real human who will read or watch this — not for an AI evaluator.
-- Never substitute, autocomplete, or infer proper nouns. 
-  Every person's name, film title, and work referenced must 
-  appear exactly as spoken in the transcript — even if a more 
-  recognisable version exists.
-</absolute_constraints>${toneRule}${lengthConstraint}
-
-<gap_resolution_tiers>
-Gaps are resolved differently based on severity:
-CRITICAL gaps: Must be addressed with a full paragraph or dedicated spoken beat.
-MEDIUM gaps: Must be woven into the narrative as a clear, substantive sentence or two.
-MINOR gaps: Can be resolved inline as a natural aside or contextual detail.
-</gap_resolution_tiers>
-
-<narrative_bridge_rule>
-When resolving a gap, seamlessly weave the concept into the narrative.
-CRITICAL: If a gap asks for specific metrics, numbers, or baselines that are 
-NOT in the transcript, DO NOT invent them and DO NOT admit they are missing.
-Instead, PIVOT to the underlying principle.
-NEVER use phrases like: "I haven't shared," "I didn't track," "I didn't 
-explain," "What I haven't spelled out," or "I forgot to mention." Speak 
-with absolute, unbroken authority at all times.
-</narrative_bridge_rule>
-
-<narrative_spine_rule>
-Identify ONE core premise from the transcript. State it clearly near the 
-start. Every section must connect back to this spine. No parallel themes 
-or side essays.
-</narrative_spine_rule>
-
-<voice_and_quality_standard>
-Write like a senior content strategist, not like an AI assistant. 
-Specifically:
-- Every sentence must earn its place — cut anything that restates what 
-  was just said.
-- Prefer concrete over abstract. If the sentence could appear in any 
-  script on any topic, rewrite it until it could only appear in this one.
-- Vary sentence rhythm. Short declarative sentences carry weight. 
-  Longer sentences build context. Never string five long sentences in a row.
-- The opening line must create immediate tension or specificity — 
-  never start with a broad universal statement.
-- Transitions between sections must carry argumentative logic, not just 
-  chronological sequence. ("The reason this matters" not "Next up").
-- The closing must leave the reader/viewer with a single, clear, 
-  actionable or memorable thought — not a summary of what was just said.
-</voice_and_quality_standard>
-
-<audience_anchor_rule>
-Before writing, identify who this content is for based on the transcript's 
-tone, vocabulary, and subject matter. Write every sentence as if you can 
-picture that specific person reading or watching. This means:
-- Use vocabulary they would use, not vocabulary that sounds impressive.
-- Address pain points they actually feel, not ones you assume they have.
-- Never write a sentence that requires the reader to already agree with 
-  the premise to find it useful.
-</audience_anchor_rule>
-
-<inputs>
-<transcript>
-${transcript}
-</transcript>
-<gaps>
-${JSON.stringify(gaps, null, 2)}
-</gaps>
-<word_count>${wordCount}</word_count>
-<target_platform>${resolvedPlatform}</target_platform>
-</inputs>
-
-${resolvedPlatform === "youtube" ? `
-<platform_rules platform="youtube">
-<purpose>Spoken monologue for video — continuous, natural, camera-ready.</purpose>
-<structure>
-1. Hook — spoken, natural, creates specific tension in the first sentence.
-2. Spine statement — one clear premise the whole script serves.
-3. Story/Journey — chronological narrative with timestamps at each paragraph.
-4. Synthesis — connect the gap resolutions back to the spine explicitly.
-5. Close — one grounded final thought. No motivational CTA unless the transcript implies it.
-</structure>
-<timestamp_rule>
-Format: [MM:SS] at the start of every paragraph. Increment by 30-45 seconds per paragraph.
-</timestamp_rule>
-<format_rules>
-- Each paragraph: 3–5 sentences that flow naturally when spoken aloud.
-- Do NOT use one-sentence paragraphs, bullet rhythms, or atomic thread-style decomposition.
-- When resolving gaps, prefer concrete spoken explanation over compressed abstraction.
-</format_rules>
-<hard_bans>
-- One-sentence paragraphs
-- Bullet-style rhythm
-- Essay-style section headers
-- Thread-style atomic structure
-</hard_bans>
-</platform_rules>
-` : ""}
-
-${resolvedPlatform === "blog" ? `
-<platform_rules platform="blog">
-<purpose>Long-form written article — analytical, grounded, reader-first.</purpose>
-<structure>
-- Clear section headers (## Heading syntax).
-- Logical progression from premise through gap resolutions to synthesis.
-- Paragraphs: 3–5 sentences each.
-- No spoken cues ("you know", "right", "so").
-</structure>
-<termination_rule>
-Do NOT use: "In conclusion", "Ultimately", "This taught me", "What I learned". End with a grounded observation that advances understanding — not a wrap-up.
-</termination_rule>
-</platform_rules>
-` : ""}
-
-${resolvedPlatform === "linkedin" ? `
-<platform_rules platform="linkedin">
-<purpose>Professional insight post — reflective, credible, thought-leadership tone.</purpose>
-<structure>
-- Lines 1–4: Strong opening insight.
-- Short paragraphs: 2–3 sentences, double line-break between each.
-- 3 bullet points covering key gap resolutions.
-- 1 bold question at the end on its own line.
-</structure>
-<hard_bans>
-- Emojis
-- Hashtags
-- Motivational clichés
-- "This showed me" / "I learned"
-</hard_bans>
-</platform_rules>
-` : ""}
-
-${resolvedPlatform === "x" ? `
-<platform_rules platform="x">
-<purpose>Native X/Twitter insight thread — atomic, declarative, feed-ready.</purpose>
-<atomic_definition>
-One tweet = one sentence = one atomic observation, action, or fact.
-</atomic_definition>
-<structure>
-- Opening tweet: one declarative statement tied to the transcript spine.
-- Middle tweets: one atomic insight per gap, sequential.
-- Final tweet: a standalone factual observation — not a takeaway.
-</structure>
-<split_rule>
-Any sentence with cause + effect, action + outcome, or insight + implication MUST be split into two tweets.
-</split_rule>
-<hard_bans>
-"I learned" / "This taught me" / "Ultimately" / "In summary" / emojis / hashtags / "🧵"
-</hard_bans>
-<validation_gate>
-1. Exactly one sentence?
-2. No explanation or reflection?
-3. No cause-effect in single tweet?
-4. No banned phrases?
-Delete if any rule violated.
-</validation_gate>
-</platform_rules>
-` : ""}
-
-<universal_validation_gate>
-Before outputting, verify: gap resolution, specific non-generic paragraphs, no summary close, and tone compliance.
-Return ONLY the final derivative script. Plain text. 
-No analysis, no explanations, no meta commentary.
-</universal_validation_gate>`;
-        const monologueResp = await anthropic.messages.create({
-          model: "claude-sonnet-4-6",
-          max_tokens: 8192,
-          temperature: 0.15,
-          system: [{ type: "text", text: derivativeSystemPrompt, cache_control: { type: "ephemeral" } }],
-          messages: [{ role: "user", content: "Generate the derivative script now." }]
-        });
-
-        renderedScript = monologueResp.content[0].text.trim();
-      }
-    }
-
-    /* -------------------------------------------
-       SAVE RESULT & STREAM END
-    ------------------------------------------- */
+    /* SAVE RESULT */
     const finalPayload = {
       summary: req.body.summary || analysis.summary || "",
-      gaps: gaps,
+      gaps,
       titles: req.body.titles || analysis.titles || [],
       keywords: req.body.keywords || analysis.keywords || [],
-      suggested_script: renderedScript
+      suggested_script: renderedScript,
     };
 
     const updatePayload = { generated_script: JSON.stringify(finalPayload) };
-
     if (req.body.targetPlatform) {
-      const updatedMetadata = {
-        ...analysis.metadata,
-        content_target: req.body.targetPlatform
-      };
-      updatePayload.metadata = updatedMetadata;
+      updatePayload.metadata = { ...analysis.metadata, content_target: req.body.targetPlatform };
     }
 
-    await supabase
-      .from("analyses")
-      .update(updatePayload)
-      .eq("id", aId);
+    await supabase.from("analyses").update(updatePayload).eq("id", aId);
 
-    if (formatMode === "monologue" && targetPlatformForCheck === "youtube") {
-      await incrementUsage(user.id, "youtube_derivative");
+    /* Increment usage only after successful generation (not on regeneration) */
+    if (!isRegenerate) {
+      await incrementUsage(user.id, 1);
     }
 
     res.write(JSON.stringify({ status: "script_ready", script: renderedScript }) + "\n");
