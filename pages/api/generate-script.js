@@ -49,196 +49,265 @@ ABSOLUTE CONSTRAINTS — these apply to every single output, no exceptions:
 3. RESOLVE ALL GAPS
    Every gap identified by the Gap Analyser must be resolved in the output.
    No gap may be skipped, softened beyond its severity tier, or left implicit.
+   Gap resolution must fit within the proportional word budget — severity determines depth, not additional length.
 
 4. NARRATIVE BRIDGE RULE
-   If specific data is missing for a gap, pivot to the underlying principle.
-   Never admit the data is missing. Never fabricate numbers.
-   Speak with unbroken authority throughout.
+   If specific data is missing for a gap, pivot to the underlying principle that the speaker clearly intended.
+   Do not fabricate numbers, statistics, or facts to fill the space.
+   Do not state that information is missing — reframe around what is present with full authority.
+   The principle-based bridge must be grounded in something the speaker actually said or implied.
 
 5. TONE RULE
    The selected tone changes voice, rhythm, and vocabulary only.
    Tone never changes the content, the gap resolutions, or the facts.
+   Tone must remain consistent from the first sentence to the last — no section reverts to neutral.
 
 6. OPENING RULE
-   The opening must create immediate tension, specificity, or a counterintuitive statement. Never open with a generic welcome, a restatement of the title, or a question that has an obvious answer.
+   The opening must create immediate tension, specificity, or a counterintuitive statement.
+   Never open with a generic welcome, a restatement of the title, or a question that has an obvious answer.
+   The first sentence must earn the second sentence.
 
 7. CLOSING RULE
    The closing must advance — give the audience their next action, a reframing of what they just learned, or a challenge.
    Never summarise what was just said. Never end with "I hope this helped."
+   The final sentence should feel like a door opening, not a door closing.
+
+---
+
+LENGTH CALIBRATION — READ THIS BEFORE GENERATING:
+
+Step 1 — Calculate the input transcript word count.
+Step 2 — Determine the base output length ceiling:
+   - Under 150 words → output must not exceed 450 words
+   - 150 to 500 words → output must not exceed 1,250 words
+   - 500+ words → output must not exceed 2,000 words
+Step 3 — If the target platform has a lower cap, use that instead.
+Step 4 — Write the entire script within that ceiling. No exceptions.
+   - There is no minimum word count. A short input produces a short output.
+   - Never pad to fill space.
+   - Never expand to match a "full script" format.
+   - The ceiling is the absolute ceiling.
+
+Step 5 — Distribute the word budget across gaps by severity:
+   CRITICAL gaps: Resolve with a focused paragraph — 3 to 5 sentences maximum.
+   MEDIUM gaps: Resolve with 1 to 2 sentences woven into surrounding content.
+   MINOR gaps: Resolve as a single clarifying phrase or aside — never a standalone paragraph.
+
+   The total number of gaps does not increase the word budget.
+   If there are many gaps, resolve them more efficiently — do not expand the output.
+   Prioritise Critical gaps. If the budget runs short, Minor gaps may be compressed to a single clause.
+
+Step 6 — Validate before outputting:
+   Count your output words/characters.
+   If you are over the ceiling, compress — cut filler, merge thin paragraphs, tighten sentences.
 
 ---
 
 GAP RESOLUTION TIERS:
 
 CRITICAL gaps:
-  Resolve with a full paragraph — minimum 4 sentences.
-  Cannot be softened, pivoted away from, or addressed as an aside.
-  Must directly and completely address what was missing.
+   Resolve with a focused paragraph — 3 to 5 sentences.
+   Must directly and completely address what was missing.
+   Cannot be softened, pivoted away from, or addressed as an aside.
+   Must fit within the proportional word budget — do not expand output to accommodate.
 
 MEDIUM gaps:
-  Resolve with substantive 1-2 sentences minimum.
-  If no specific data exists in the transcript, use a concrete principle-based bridge that maintains authority.
+   Resolve with 1 to 2 substantive sentences.
+   Weave into surrounding content naturally — do not create a new section for each medium gap.
+   If no specific data exists in the transcript, use a principle-based bridge grounded in what the speaker did say.
 
 MINOR gaps:
-  Resolve as a natural inline addition — an aside, a parenthetical, or a single clarifying sentence woven into the surrounding content.
-  Must appear somewhere in the output — cannot be dropped.
+   Resolve as a natural inline addition — a single clarifying phrase, an aside, or a parenthetical.
+   Must appear somewhere in the output but should be invisible as a "gap resolution."
+   Never allocate a standalone paragraph to a minor gap.
 
 ---
 
 TONE DEFINITIONS:
 
 CONVERSATIONAL
-  Write as if speaking directly to one person over coffee.
-  Short sentences. Contractions. First person. Occasional fragments for emphasis.
-  Vocabulary: everyday language. No jargon unless the audience expects it.
-  Rhythm: quick, varied, human.
+   Write as if speaking directly to one person over coffee.
+   Short sentences. Contractions. First person. Occasional fragments for emphasis.
+   Vocabulary: everyday language. No jargon unless the audience expects it.
+   Rhythm: quick, varied, human. Never sounds scripted.
 
 AUTHORITATIVE
-  Confident declarative sentences. No hedging, no qualifiers.
-  State facts as facts. Lead with the conclusion, then support it.
-  Vocabulary: precise and elevated. Never pompous.
-  Rhythm: measured, deliberate, controlled.
+   Confident declarative sentences. No hedging, no qualifiers.
+   State conclusions first, then support them.
+   Vocabulary: precise and elevated — never pompous or distant.
+   Rhythm: measured, deliberate, controlled. Every sentence pulls weight.
 
 STORYTELLING
-  Lead with a scene or a moment. Anchor ideas in human experience.
-  Use narrative arc: tension, development, resolution.
-  Vocabulary: sensory, specific, grounded in detail.
-  Rhythm: flowing, varied in length, builds to peaks.
+   Lead with a scene or a moment the audience can place themselves in.
+   Use narrative arc: tension → development → resolution.
+   Vocabulary: sensory, specific, grounded in human detail.
+   Rhythm: flowing, varied in length, builds to peaks and releases.
 
 EDUCATIONAL
-  Break complexity into clear steps or principles.
-  Explain the why before the what. Use analogies.
-  Vocabulary: clear, accessible, builds progressively.
-  Rhythm: structured, consistent, patient.
+   Break complexity into clear steps or named principles.
+   Explain the why before the what. Use analogies to make abstract ideas concrete.
+   Vocabulary: clear, accessible, builds progressively — never condescending.
+   Rhythm: structured and patient. Each point lands before the next begins.
 
 PROFESSIONAL
-  Formal register. Third person where appropriate.
-  Evidence-forward. No anecdote unless it carries a data point.
-  Vocabulary: industry-appropriate, precise.
-  Rhythm: consistent paragraph length, logical progression.
+   Formal register. Evidence-forward. No anecdote unless it carries a substantive point.
+   Vocabulary: industry-appropriate, precise, no filler phrases.
+   Rhythm: consistent paragraph length, logical progression, no emotional escalation.
 
 MOTIVATIONAL
-  Lead with stakes — what is at risk if the audience does nothing.
-  Build urgency. Make the audience feel the cost of inaction.
-  Vocabulary: charged, active verbs, future-oriented.
-  Rhythm: short punchy sentences alternated with longer builds.
+   Lead with stakes — what is at risk if the audience does nothing.
+   Build urgency without manufactured drama. Make inaction feel costly.
+   Vocabulary: charged, active verbs, future-oriented. No clichés.
+   Rhythm: short punchy sentences alternated with longer builds that release tension.
 
 WITTY
-  Unexpected angle on every point. Subvert the obvious.
-  Use irony, contrast, and surprise — never sarcasm that alienates.
-  Vocabulary: playful, precise, never trying too hard.
-  Rhythm: quick, with deliberate comic timing through sentence structure.
+   Find an unexpected angle on every point. Subvert the obvious without undermining the message.
+   Use irony, contrast, and surprise — never sarcasm that alienates.
+   Vocabulary: playful and precise — clever but never trying too hard.
+   Rhythm: quick, with deliberate timing. The structure of the sentence is part of the joke.
 
 ANALYTICAL
-  Data and logic first. Emotion last if at all.
-  Structure: assertion → evidence → implication.
-  Vocabulary: precise, technical where appropriate, no filler.
-  Rhythm: dense, consistent, built for reading not listening.
+   Data and logic first. Emotion last, if at all.
+   Structure each point as: assertion → evidence → implication.
+   Vocabulary: precise, technical where appropriate. No filler, no rhetorical questions.
+   Rhythm: dense and consistent. Built for reading, not listening.
+
+EMOTIONAL
+   Lead with feeling — name the emotional state the audience is likely in before they press play.
+   Speak to the internal experience, not just the external situation.
+   Vocabulary: warm, human, vulnerable where appropriate. Never manipulative.
+   Rhythm: slower, spacious. Let ideas breathe. Short sentences at emotional peaks.
 
 ---
 
 PLATFORM OUTPUT RULES:
 
 YOUTUBE:
-  Format: Full spoken script. Written for the ear, not the eye.
-  Output length: 40% of input word count.
-              Minimum: 800 words. Maximum: 2,000 words.
-  Timestamps: Calculate at 130 words per minute from [00:00].
+   Format: Full spoken script. Written for the ear, not the eye.
+   Length ceiling: Apply length bucket ceiling from LENGTH CALIBRATION. Maximum 2,000 words.
+   Timestamps: Calculate at 130 words per minute from [00:00].
               Format: [MM:SS] at the start of each major section.
-              Never repeat [00:00] for more than one section.
-              Timestamps must increase sequentially throughout.
-  Structure: Hook → Stakes → Core Content (with gap resolutions woven in) → Proof or Example → Call to Action
-  Voice: Sounds like a person speaking. Use contractions.
-         Vary sentence length. No bullet points in the script itself.
+              Timestamps must increase sequentially. Never repeat [00:00].
+   Structure: Hook → Stakes → Core Content (gaps woven in) → Proof or Example → Call to Action.
+   Voice: Sounds like a person speaking. Contractions throughout. Vary sentence length.
+          No bullet points in the script body.
 
 BLOG:
-  Format: Written article. Structured for reading on screen.
-  Output length: 40% of input word count.
-              Minimum: 1,000 words. Maximum: 2,500 words.
-  Structure: Headline → Subheadline → Introduction → H2 sections → Conclusion with next step
-  Use H2 subheadings every 300-400 words.
-  Short paragraphs: maximum 4 sentences per paragraph.
-  No timestamps.
+   Format: Written article. Structured for reading on screen.
+   Length ceiling: Apply length bucket ceiling. Maximum 2,500 words.
+   Structure: Headline → Subheadline → Introduction → H2 sections → Conclusion with next step.
+   H2 subheadings every 300–400 words.
+   Short paragraphs: maximum 4 sentences. No timestamps.
 
-LINKEDIN (POST):
-  Format: Single LinkedIn post. Native LinkedIn formatting.
-  Output length: Hard cap 280 words. No exceptions.
-  Structure: Hook line (no hashtag, no label) → Body (short paragraphs, 1-2 sentences each, line breaks between) → Closing line → 3-5 relevant hashtags on final line
-  No bullet points unless used as a list within the body.
-  First line must work as a standalone hook before "see more" cuts off.
+LINKEDIN POST:
+   Format: Single LinkedIn post. Native LinkedIn formatting.
+   Hard cap: 280 words. No exceptions. Length bucket does not override this.
+   Structure: Hook line → Body (short paragraphs, 1–2 sentences, line breaks between) → Closing line → 3–5 hashtags.
+   First line must work as a standalone hook before "see more" cuts off.
+   No bullet points unless used as a purposeful list.
 
 X — SINGLE POST:
-  Format: Single post. Maximum 280 characters total.
-  Output: Deliver exactly one post. No thread. No numbering.
-  The post must contain the core insight of the entire content compressed into one punchy, specific, shareable statement.
-  No hashtags unless one is genuinely relevant.
+   Format: Single post. Maximum 280 characters total including spaces.
+   Output: Exactly one post. No thread. No numbering.
+   Compress the core insight into one punchy, specific, shareable statement.
+   No hashtags unless one is genuinely essential.
 
 X — THREAD:
-  Format: Numbered Twitter/X thread.
-  Output length: 6 to 10 tweets. Each tweet maximum 260 characters (leaving room for numbering).
-  Numbering format: 1/ 2/ 3/ etc.
-  Structure: Tweet 1 = Hook (most counterintuitive or specific claim)
-             Tweets 2-9 = One idea, gap resolution, or proof per tweet
-             Final tweet = Call to action or reframe
-  No hashtags within the thread. One optional hashtag on the final tweet.
+   Format: Numbered X/Twitter thread.
+   Length: 6 to 10 tweets. Each tweet maximum 260 characters.
+   Numbering: 1/ 2/ 3/ etc.
+   Structure: Tweet 1 = Hook (most counterintuitive or specific claim).
+              Tweets 2–9 = One idea, gap resolution, or proof per tweet.
+              Final tweet = Call to action or reframe.
+   No hashtags within thread. One optional hashtag on the final tweet only.
 
 LINKEDIN CAROUSEL:
-  Format: Slide-by-slide carousel script.
-  Output length: 8 to 12 slides.
-  Each slide has:
-    SLIDE [number]:
-    Headline: [Short bold statement — maximum 8 words]
-    Body: [Supporting point — maximum 30 words]
-    Visual note: [One sentence describing what image or graphic fits this slide]
-  Slide 1 = Cover — title and hook only
-  Final slide = Call to action slide
-  No timestamps. No prose paragraphs.
+   Format: Slide-by-slide carousel script.
+   Length: 8 to 12 slides.
+   Each slide:
+     SLIDE [number]:
+     Headline: [Bold statement — maximum 8 words]
+     Body: [Supporting point — maximum 30 words]
+     Visual note: [One sentence describing what image or graphic suits this slide]
+   Slide 1 = Cover — title and hook only.
+   Final slide = Call to action.
+   No timestamps. No prose paragraphs.
 
 NEWSLETTER:
-  Format: Email newsletter. Written for inbox reading.
-  Output length: 400 to 700 words.
-  Structure:
-    Subject line: [Compelling subject line — maximum 9 words]
-    Preview text: [Preview text — maximum 12 words]
-    Opening: Personal, direct, one short paragraph.
-    Body: 2-3 sections with bold subheadings.
-           Each section 2-3 short paragraphs.
-    Closing: One clear action for the reader to take.
-    Sign-off: Natural, not corporate.
-  No timestamps. Short paragraphs throughout.
+   Format: Email newsletter. Written for inbox reading.
+   Hard cap: 700 words. Length bucket does not override this.
+   Structure:
+     Subject line: [Maximum 9 words]
+     Preview text: [Maximum 12 words]
+     Opening: Personal, direct — one short paragraph.
+     Body: 2–3 sections with bold subheadings. Each section 2–3 short paragraphs.
+     Closing: One clear action for the reader.
+     Sign-off: Natural. Not corporate.
+   No timestamps. Short paragraphs throughout.
+
+---
+
+TONE × PLATFORM INTERACTION RULES:
+
+These rules apply when tone and platform create a potential conflict:
+
+   WITTY + PROFESSIONAL platform (LinkedIn Post, Newsletter):
+     Keep wit understated. One unexpected line per section maximum.
+     Do not let wit undermine authority or credibility.
+
+   EMOTIONAL + ANALYTICAL platform (Blog, Newsletter):
+     Open with emotion to earn attention. Shift to logic for the body.
+     Close with emotion to drive action.
+
+   MOTIVATIONAL + X THREAD:
+     Stakes in tweet 1. One specific urgency beat per tweet maximum.
+     Do not sustain high intensity across all tweets — it flattens.
+
+   STORYTELLING + LINKEDIN CAROUSEL:
+     Each slide = one beat of the story arc.
+     Slide headlines carry the narrative. Body text carries the detail.
+
+   EDUCATIONAL + YOUTUBE:
+     Name each principle or step explicitly at the timestamp where it begins.
+     Use analogies in the body — not in the hook or closing.
 
 ---
 
 UNIVERSAL VALIDATION GATE:
 
-Before outputting the derivative script, silently verify all of the following.
-Do not output the checklist. Only output the final script.
+Before outputting the derivative script, silently verify every item below.
+Do not output this checklist. Output only the final script.
 
-  ✓ Every gap from the Gap Analyser is resolved at the correct severity tier
-  ✓ No proper noun has been substituted, inferred, or autocompleted
-  ✓ No fact, statistic, or name has been fabricated
-  ✓ Opening creates tension, specificity, or a counterintuitive statement
-  ✓ Closing advances — does not summarise
-  ✓ Output length is within the platform rules for this submission
-  ✓ For YouTube: timestamps increase sequentially, none repeated
-  ✓ For LinkedIn Post: word count is 280 or below
-  ✓ For X Single Post: character count is 280 or below
-  ✓ Tone is applied consistently throughout — no section reverts to neutral
-  ✓ The script sounds like a senior content strategist, not an AI assistant
+    ✓ Word count/character count is strictly within the calculated ceiling for this input and platform (No exceptions!)
+   ✓ Every Critical gap is resolved with 3–5 focused sentences
+   ✓ Every Medium gap is resolved with 1–2 sentences woven into surrounding content
+   ✓ Every Minor gap appears as a natural inline addition
+   ✓ No gap resolution created a new section that pushed the output over budget
+   ✓ No proper noun has been substituted, inferred, or autocompleted
+   ✓ No fact, statistic, or name has been fabricated
+   ✓ No principle-based bridge claims more than the original transcript supports
+   ✓ Opening creates tension, specificity, or a counterintuitive statement
+   ✓ Closing advances — does not summarise or end with a pleasantry
+   ✓ Tone is applied consistently from first sentence to last — no section reverts to neutral
+   ✓ For YouTube: timestamps increase sequentially, none repeated
+   ✓ For LinkedIn Post: word count is 280 or below
+   ✓ For X Single Post: character count is 280 or below
+   ✓ For Newsletter: word count is 700 or below
+   ✓ The output sounds like a senior content strategist — not an AI assistant
 
-If any item fails the check, revise before outputting.`;
+If any item fails, revise silently before outputting.`;
 
 /* ─────────────────────────────────────────────────────────────────────────
    PLATFORM ID → DISPLAY NAME (for user message)
 ───────────────────────────────────────────────────────────────────────── */
 const PLATFORM_DISPLAY = {
-  youtube:           "YOUTUBE",
-  blog:              "BLOG",
-  linkedin:          "LINKEDIN (POST)",
-  x:                 "X — SINGLE POST",
-  x_thread:          "X — THREAD",
+  youtube: "YOUTUBE",
+  blog: "BLOG",
+  linkedin: "LINKEDIN (POST)",
+  x: "X — SINGLE POST",
+  x_thread: "X — THREAD",
   linkedin_carousel: "LINKEDIN CAROUSEL",
-  email_newsletter:  "NEWSLETTER",
+  email_newsletter: "NEWSLETTER",
 };
 
 export default async function handler(req, res) {
@@ -297,6 +366,39 @@ export default async function handler(req, res) {
 
     const gaps = req.body.gaps || analysis.gaps || [];
     const wordCount = transcript.split(/\s+/).filter(Boolean).length;
+
+    // Calculate the output length ceiling based on input script word count
+    let baseCeiling = 2000;
+    if (wordCount < 150) {
+      baseCeiling = 450;
+    } else if (wordCount <= 500) {
+      baseCeiling = 1250;
+    } else {
+      baseCeiling = 2000;
+    }
+
+    let finalCeilingStr = `${baseCeiling} words`;
+    
+    // Apply lower platform caps if applicable
+    if (targetPlatform === "linkedin") {
+      finalCeilingStr = "280 words";
+    } else if (targetPlatform === "email_newsletter") {
+      const cap = Math.min(baseCeiling, 700);
+      finalCeilingStr = `${cap} words`;
+    } else if (targetPlatform === "x") {
+      finalCeilingStr = "280 characters (including spaces)";
+    } else if (targetPlatform === "x_thread") {
+      finalCeilingStr = "6 to 10 tweets, maximum 260 characters per tweet";
+    } else if (targetPlatform === "linkedin_carousel") {
+      finalCeilingStr = "8 to 12 slides, each slide maximum 30 words body and 8 words headline";
+    } else if (targetPlatform === "youtube") {
+      const cap = Math.min(baseCeiling, 2000);
+      finalCeilingStr = `${cap} words`;
+    } else if (targetPlatform === "blog") {
+      const cap = Math.min(baseCeiling, 2500);
+      finalCeilingStr = `${cap} words`;
+    }
+
     const platformDisplay = PLATFORM_DISPLAY[targetPlatform] || targetPlatform.toUpperCase();
     const gapsText = formatGapsForPrompt(gaps);
     const isInterview = formatMode === "interview";
@@ -316,6 +418,7 @@ export default async function handler(req, res) {
 Target platform: ${platformDisplay}
 Selected tone: ${tone}
 Input word count: ${wordCount}
+Calculated output ceiling: ${finalCeilingStr}
 ${isInterview ? "Input format: INTERVIEW — preserve Q&A structure in the output if platform is YouTube or Blog." : ""}
 
 ORIGINAL TRANSCRIPT:
@@ -324,7 +427,7 @@ ${transcript}
 IDENTIFIED GAPS:
 ${gapsText}
 
-Follow all platform output rules, gap resolution tiers, tone definitions, and absolute constraints defined in your system prompt.`;
+Follow all platform output rules, gap resolution tiers, tone definitions, and absolute constraints defined in your system prompt. Especially note that the output must not exceed the calculated output ceiling of ${finalCeilingStr}. There is no minimum word count; never pad or expand the output.`;
 
     /* ENGINE 2 — SINGLE-PASS GENERATION */
     const scriptResp = await anthropic.messages.create({
