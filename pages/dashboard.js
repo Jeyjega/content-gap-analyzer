@@ -234,9 +234,12 @@ export default function Dashboard() {
   // Format Selection State
   const [showFormatModal, setShowFormatModal] = useState(false);
   const [showToneModal, setShowToneModal] = useState(false);
+  const [showMissingFactsModal, setShowMissingFactsModal] = useState(false);
   const [selectedTone, setSelectedTone] = useState(null);
   const [pendingAnalysisId, setPendingAnalysisId] = useState(null);
   const [formatChoice, setFormatChoice] = useState(null); // 'preserve' | 'monologue'
+  const [resolvedCriticalGaps, setResolvedCriticalGaps] = useState({});
+  const [autofillLoading, setAutofillLoading] = useState(false);
 
   const [contentTarget, setContentTarget] = useState("youtube"); // 'youtube' | 'blog' | 'linkedin' | 'x'
   const [selectedPlatform, setSelectedPlatform] = useState(null); // For post-analysis switching
@@ -255,6 +258,39 @@ export default function Dashboard() {
     const out = [];
     for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
     return out;
+  };
+
+  const getHelperText = (desc) => {
+    if (!desc) return "";
+    const sentences = desc.split(/[.!?]+\s/);
+    if (sentences.length > 0) {
+      return sentences[0].trim() + (sentences[0].trim().endsWith(".") ? "" : ".");
+    }
+    return desc;
+  };
+
+  const getGapPlaceholder = (category) => {
+    if (!category) return "Briefly describe what happened here in plain English...";
+    const catUpper = category.toUpperCase();
+    if (catUpper.includes("MECHANISM")) {
+      return "E.g., What exact steps did you take? What specifically changed? Drop it in plain English...";
+    }
+    if (catUpper.includes("EVIDENCE")) {
+      return "E.g., Drop your specific numbers, data, metrics, or examples here...";
+    }
+    if (catUpper.includes("CONTEXT")) {
+      return "E.g., Provide the background details (your industry, your product, or timeline)...";
+    }
+    if (catUpper.includes("STRUCTURAL")) {
+      return "E.g., Outline the specific framework, steps, or takeaway you want the viewer to learn...";
+    }
+    if (catUpper.includes("CREDIBILITY")) {
+      return "E.g., Share your specific experience, background, or results that prove this...";
+    }
+    if (catUpper.includes("UNANCHORED")) {
+      return "E.g., Quantify this. How much? How long? Be specific...";
+    }
+    return "Briefly describe what happened here in plain English...";
   };
 
   const extractVideoId = (str) => {
@@ -301,10 +337,7 @@ export default function Dashboard() {
     setShowToneModal(true);
   };
 
-  const generateScriptWithTone = async (tone) => {
-    setShowToneModal(false);
-    setSelectedTone(tone);
-
+  const triggerScriptGeneration = async (tone, facts = {}) => {
     setStatus("generating-analysis");
     const analysisId = pendingAnalysisId;
 
@@ -329,7 +362,8 @@ export default function Dashboard() {
           analysisId,
           formatMode: formatChoice,
           tone: tone,
-          gaps: analysisResult?.gaps
+          gaps: analysisResult?.gaps,
+          resolvedCriticalGaps: facts
         })
       });
 
@@ -390,6 +424,92 @@ export default function Dashboard() {
     }
   };
 
+  const generateScriptWithTone = async (tone) => {
+    setShowToneModal(false);
+    setSelectedTone(tone);
+
+    const criticalGaps = (analysisResult?.gaps || []).filter(g => g.severity === "CRITICAL");
+    if (criticalGaps.length > 0) {
+      setShowMissingFactsModal(true);
+    } else {
+      await triggerScriptGeneration(tone, {});
+    }
+  };
+
+  const handleAutoFillGaps = async () => {
+    setAutofillLoading(true);
+    try {
+      const token = session.access_token;
+      const criticalGaps = (analysisResult?.gaps || []).filter(g => g.severity === "CRITICAL");
+      
+      const response = await fetch("/api/autofill-gaps", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          originalScript: transcript,
+          criticalGaps
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Autofill request failed: ${await response.text()}`);
+      }
+
+      const data = await response.json();
+      console.log('Auto-Fill Raw Response:', data);
+      
+      // Match the parsed JSON keys to gap.title used in the resolvedCriticalGaps state object
+      const normalize = (str) => {
+        if (!str) return "";
+        return str.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+      };
+
+      const resolvedGaps = {};
+      criticalGaps.forEach(gap => {
+        const normalizedTitle = normalize(gap.title);
+        const normalizedId = normalize(gap.id);
+        
+        const matchKey = Object.keys(data).find(k => {
+          const normalizedK = normalize(k);
+          return (normalizedTitle && normalizedK === normalizedTitle) ||
+                 (normalizedId && normalizedK === normalizedId) ||
+                 (normalizedTitle && normalizedK.includes(normalizedTitle)) ||
+                 (normalizedTitle && normalizedTitle.includes(normalizedK));
+        });
+
+        let val = null;
+        if (matchKey && data[matchKey] !== undefined && data[matchKey] !== null) {
+          val = data[matchKey];
+        } else if (gap.title && data[gap.title] !== undefined && data[gap.title] !== null) {
+          val = data[gap.title];
+        }
+
+        if (val !== null && val !== undefined) {
+          if (typeof val === "object") {
+            resolvedGaps[gap.title] = JSON.stringify(val, null, 2);
+          } else {
+            resolvedGaps[gap.title] = String(val);
+          }
+        }
+      });
+
+      // Merge values into resolvedCriticalGaps
+      setResolvedCriticalGaps(prev => ({
+        ...prev,
+        ...resolvedGaps
+      }));
+
+    } catch (error) {
+      console.error("Auto-fill error:", error);
+      log(`Error in autofill: ${error.message}`);
+    } finally {
+      setAutofillLoading(false);
+    }
+  };
+
   const handleRegenerateScript = async (newPlatform) => {
     if (!newPlatform) return;
     // Removed duplicate check to allow explicit regeneration via button
@@ -429,7 +549,8 @@ export default function Dashboard() {
           summary: analysisResult.summary, // Pass these to preserve DB consistency if needed
           titles: analysisResult.titles,
           keywords: analysisResult.keywords,
-          formatMode: "monologue"
+          formatMode: "monologue",
+          resolvedCriticalGaps
         })
       });
 
@@ -717,7 +838,10 @@ export default function Dashboard() {
       const gapResp = await fetch("/api/analyze-gaps", {
         method: "POST",
         headers: authHeaders,
-        body: JSON.stringify({ analysisId: newAnalysisId })
+        body: JSON.stringify({
+          analysisId: newAnalysisId,
+          targetPlatform: contentTarget
+        })
       });
       if (!gapResp.ok) {
         const txt = await gapResp.text();
@@ -1427,17 +1551,20 @@ export default function Dashboard() {
         )}
 
         {/* Titles & Keywords - Full Width below Script */}
-        {(analysisResult?.titles || analysisResult?.keywords) && (
+        {((analysisResult?.strategic_titles && analysisResult.strategic_titles.length > 0) || 
+          (analysisResult?.indexed_keywords && analysisResult.indexed_keywords.length > 0) || 
+          analysisResult?.titles || 
+          analysisResult?.keywords) && (
           <div className="mt-8 p-8 bg-[#111827]/80 backdrop-blur-md border border-white/10 rounded-none relative animate-slide-up">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               {/* Titles */}
-              {analysisResult?.titles && (
+              {((analysisResult?.strategic_titles && analysisResult.strategic_titles.length > 0) || analysisResult?.titles) && (
                 <div>
                   <h3 className="font-mono text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2 mb-3">
                      <span className="text-purple-500">{'>'}</span> STRATEGIC TITLES
                   </h3>
                   <ul className="space-y-0 border border-white/5 bg-[#080809]">
-                    {analysisResult.titles.map((t, i) => (
+                    {(analysisResult.strategic_titles || analysisResult.titles || []).map((t, i) => (
                       <li key={i} className="flex items-start gap-3 text-sm font-mono text-slate-200 p-3 border-b border-dashed border-white/5 hover:bg-white/5 transition-colors group">
                         <span className="text-slate-600 group-hover:text-purple-500 mt-0.5 font-bold transition-colors">[{i + 1}]</span>
                         {t}
@@ -1448,13 +1575,13 @@ export default function Dashboard() {
               )}
 
               {/* Keywords */}
-              {analysisResult?.keywords && (
+              {((analysisResult?.indexed_keywords && analysisResult.indexed_keywords.length > 0) || analysisResult?.keywords) && (
                 <div>
                   <h3 className="font-mono text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2 mb-3">
                      <span className="text-pink-500">{'>'}</span> INDEXED KEYWORDS
                   </h3>
                   <div className="flex flex-wrap gap-2">
-                    {(Array.isArray(analysisResult.keywords) ? analysisResult.keywords : []).map((k, i) => (
+                    {(analysisResult.indexed_keywords || analysisResult.keywords || []).map((k, i) => (
                       <span key={i} className="px-2 py-1 border border-white/10 text-slate-300 font-mono text-[11px] uppercase tracking-widest hover:border-pink-500/50 hover:text-pink-400 transition-colors cursor-default bg-[#080809]">
                         {k}
                       </span>
@@ -1486,8 +1613,8 @@ export default function Dashboard() {
       {/* Format Selection Modal */}
       {
         showFormatModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#080809]/90 backdrop-blur-md animate-fade-in">
-            <div className="bg-[#111827] border border-[#10B981] rounded-none max-w-md w-full overflow-hidden animate-scale-in relative shadow-[0_0_50px_rgba(16,185,129,0.1)]" onClick={(e) => e.stopPropagation()}>
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in">
+            <div className="bg-slate-900/60 backdrop-blur-md border border-white/10 rounded-none max-w-md w-full overflow-hidden animate-scale-in relative shadow-2xl" onClick={(e) => e.stopPropagation()}>
               <div className="absolute top-0 left-0 w-1 h-full bg-[#10B981]"></div>
               <div className="p-8">
                 <div className="flex items-center gap-3 mb-6">
@@ -1541,8 +1668,8 @@ export default function Dashboard() {
       {/* Tone Selection Modal */}
       {
         showToneModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#080809]/90 backdrop-blur-md animate-fade-in">
-            <div className="bg-[#111827] border border-[#10B981] rounded-none max-w-4xl w-full overflow-hidden animate-scale-in relative shadow-[0_0_50px_rgba(16,185,129,0.1)]" onClick={(e) => e.stopPropagation()}>
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in">
+            <div className="bg-slate-900/60 backdrop-blur-md border border-white/10 rounded-none max-w-4xl w-full overflow-hidden animate-scale-in relative shadow-2xl" onClick={(e) => e.stopPropagation()}>
               <div className="absolute top-0 left-0 w-1 h-full bg-[#10B981]"></div>
               <div className="p-8">
                 <div className="flex items-center gap-3 mb-2">
@@ -1600,6 +1727,126 @@ export default function Dashboard() {
                   </button>
                 </div>
 
+              </div>
+            </div>
+          </div>
+        )
+      }
+
+      {/* Missing Facts Modal */}
+      {
+        showMissingFactsModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in">
+            <div className="bg-slate-900/60 backdrop-blur-md border border-white/10 rounded-none max-w-2xl w-full overflow-hidden animate-scale-in relative shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <div className="absolute top-0 left-0 w-1 h-full bg-[#10B981]"></div>
+              <div className="p-8 max-h-[85vh] flex flex-col">
+                <div className="flex items-center gap-3 mb-2 flex-shrink-0">
+                  <div className="w-8 h-8 flex items-center justify-center flex-shrink-0 text-[#10B981]">
+                    <span className="font-mono text-xl font-bold">{'>_'}</span>
+                  </div>
+                  <div>
+                    <span className="font-mono text-[9px] uppercase tracking-widest text-slate-500 font-bold">MISSING FACTS</span>
+                    <h3 className="text-xl font-display font-bold text-white tracking-tight uppercase italic">ADD YOUR AUTHENTIC DETAILS</h3>
+                  </div>
+                </div>
+                <p className="text-slate-400 mb-6 leading-relaxed font-sans text-sm flex-shrink-0">
+                  To write a high-performing script without inventing fake facts, the engine needs the real story. Fill in these critical missing pieces so the final output sounds like you, not a generic AI.
+                </p>
+
+                <div className="flex-1 overflow-y-auto space-y-6 border border-white/10 p-4 bg-[#080809] mb-6">
+                  {
+                    (analysisResult?.gaps || []).filter(g => g.severity === "CRITICAL").map(gap => (
+                      <div key={gap.title} className="flex flex-col">
+                        <label className="block text-xs font-mono uppercase tracking-wider text-slate-300 mb-1.5 font-bold">
+                          {gap.title}
+                        </label>
+                        <p className="text-[11px] text-slate-500 mb-2 leading-relaxed italic">
+                          {getHelperText(gap.description)}
+                        </p>
+                        <textarea
+                          rows={2}
+                          value={resolvedCriticalGaps[gap.title] || ""}
+                          onChange={(e) => {
+                            setResolvedCriticalGaps(prev => ({
+                              ...prev,
+                              [gap.title]: e.target.value
+                            }));
+                          }}
+                          className="w-full bg-white/5 border border-white/10 focus:border-[#10B981]/50 text-white p-3 text-sm rounded-none focus:outline-none transition-all placeholder-slate-600 font-sans"
+                          placeholder={getGapPlaceholder(gap.category)}
+                        />
+                      </div>
+                    ))
+                  }
+                </div>
+
+                <div className="flex justify-between items-center flex-shrink-0">
+                  <button
+                    onClick={() => {
+                      setShowMissingFactsModal(false);
+                      setShowToneModal(true);
+                    }}
+                    className="font-mono text-xs uppercase text-slate-400 hover:text-white px-5 py-2.5 border border-white/10 hover:border-white/20 transition-all rounded-none"
+                  >
+                    Back
+                  </button>
+                  <div className="flex gap-3">
+                    <button
+                      disabled={autofillLoading}
+                      onClick={handleAutoFillGaps}
+                      className={`font-mono text-xs uppercase border border-white/10 text-slate-400 hover:text-white hover:bg-white/5 bg-transparent px-5 py-2.5 transition-all rounded-none ${
+                        autofillLoading ? "cursor-not-allowed opacity-50" : ""
+                      }`}
+                    >
+                      {autofillLoading ? "Generating..." : "AUTO-FILL MOCK DATA"}
+                    </button>
+                    <button
+                      disabled={
+                        !(analysisResult?.gaps || [])
+                          .filter(g => g.severity === "CRITICAL")
+                          .every(gap => (resolvedCriticalGaps[gap.title] || "").trim().length > 0)
+                      }
+                      onClick={async () => {
+                        setShowMissingFactsModal(false);
+                        await triggerScriptGeneration(selectedTone, resolvedCriticalGaps);
+                      }}
+                      className={`group font-mono font-bold text-sm uppercase px-8 py-3 flex items-center gap-2 transition-all relative overflow-hidden ${
+                        !(analysisResult?.gaps || [])
+                          .filter(g => g.severity === "CRITICAL")
+                          .every(gap => (resolvedCriticalGaps[gap.title] || "").trim().length > 0)
+                          ? "bg-slate-800 text-slate-500 cursor-not-allowed"
+                          : "bg-[#10B981] text-black hover:bg-[#059669]"
+                      }`}
+                    >
+                      {
+                        !(analysisResult?.gaps || [])
+                          .filter(g => g.severity === "CRITICAL")
+                          .every(gap => (resolvedCriticalGaps[gap.title] || "").trim().length > 0)
+                          ? null
+                          : <div className="absolute inset-x-0 top-0 h-px bg-white/50"></div>
+                      }
+                      <span>
+                        {
+                          (analysisResult?.gaps || [])
+                            .filter(g => g.severity === "CRITICAL")
+                            .every(gap => (resolvedCriticalGaps[gap.title] || "").trim().length > 0)
+                            ? "GENERATE SCRIPT"
+                            : "RESOLVE ALL GAPS"
+                        }
+                      </span>
+                      {
+                        (analysisResult?.gaps || [])
+                          .filter(g => g.severity === "CRITICAL")
+                          .every(gap => (resolvedCriticalGaps[gap.title] || "").trim().length > 0) && (
+                          <span className="relative flex h-2 w-2">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-black opacity-40"></span>
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-black"></span>
+                          </span>
+                        )
+                      }
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

@@ -429,12 +429,22 @@ ${gapsText}
 
 Follow all platform output rules, gap resolution tiers, tone definitions, and absolute constraints defined in your system prompt. Especially note that the output must not exceed the calculated output ceiling of ${finalCeilingStr}. There is no minimum word count; never pad or expand the output.`;
 
+    const resolvedCriticalGaps = req.body.resolvedCriticalGaps || {};
+    let systemPrompt = ENGINE2_SYSTEM_PROMPT;
+    if (Object.keys(resolvedCriticalGaps).length > 0) {
+      const factsText = Object.entries(resolvedCriticalGaps)
+        .map(([title, fact]) => `- **${title}**: ${fact}`)
+        .join("\n");
+
+      systemPrompt += `\n\nUSER-PROVIDED FACTS FOR CRITICAL GAPS:\n${factsText}\n\nThe user has provided specific facts to resolve the critical gaps. You MUST use these exact facts when weaving the gap resolutions into the final script. Do not invent any facts; use only the provided data.`;
+    }
+
     /* ENGINE 2 — SINGLE-PASS GENERATION */
     const scriptResp = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 8192,
       temperature: 0.2,
-      system: [{ type: "text", text: ENGINE2_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
+      system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
       messages: [{ role: "user", content: userMessage }],
     });
 

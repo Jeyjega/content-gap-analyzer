@@ -38,12 +38,12 @@ export default function UpgradeModal({
 
             {/* Backdrop */}
             <div
-                className="absolute inset-0 bg-black/80 backdrop-blur-sm transition-opacity"
+                className="absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity"
                 onClick={onClose}
             />
 
             {/* Modal Content */}
-            <div className="relative bg-[#0b0c15] border border-[#10B981] rounded-none shadow-[0_0_50px_rgba(16,185,129,0.1)] max-w-md w-full overflow-hidden animate-scale-in">
+            <div className="relative bg-slate-900/60 backdrop-blur-md border border-white/10 rounded-none shadow-2xl max-w-md w-full overflow-hidden animate-scale-in">
 
                 {/* Header Graphic / Icon (Optional decorative element) */}
                 <div className="h-2 bg-[#10B981]"></div>

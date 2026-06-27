@@ -56,7 +56,64 @@ function parseGapText(text) {
     }
   }
 
-  return gaps;
+  // Create a severity weight mapping: { 'CRITICAL': 1, 'MEDIUM': 2, 'MINOR': 3 }
+  const severityWeights = {
+    'CRITICAL': 1,
+    'MEDIUM': 2,
+    'MINOR': 3
+  };
+
+  // Sort the array based on gap.severity using this mapping
+  gaps.sort((a, b) => {
+    const weightA = severityWeights[a.severity] || 3;
+    const weightB = severityWeights[b.severity] || 3;
+    return weightA - weightB;
+  });
+
+  // Sequential Re-Indexing (If applicable):
+  // If the gap title or id includes the numeric prefix (e.g., "[01] VAGUE QUANTIFIER"),
+  // strip the old prefix and rebuild it sequentially from [01] to [N].
+  const prefixRegex = /^\[\d+\]\s*/;
+  const alternativePrefixRegex = /^\d+[\.\-\:]\s*/;
+
+  const reindexedGaps = gaps.map((gap, index) => {
+    const numStr = String(index + 1).padStart(2, "0");
+    const newPrefix = `[${numStr}] `;
+
+    let title = gap.title || "";
+    let hasPrefix = false;
+
+    if (prefixRegex.test(title)) {
+      title = title.replace(prefixRegex, "");
+      hasPrefix = true;
+    } else if (alternativePrefixRegex.test(title)) {
+      title = title.replace(alternativePrefixRegex, "");
+      hasPrefix = true;
+    }
+
+    let id = gap.id || "";
+    let idHasPrefix = false;
+    if (id) {
+      if (prefixRegex.test(id)) {
+        id = id.replace(prefixRegex, "");
+        idHasPrefix = true;
+      } else if (alternativePrefixRegex.test(id)) {
+        id = id.replace(alternativePrefixRegex, "");
+        idHasPrefix = true;
+      }
+    }
+
+    const updatedGap = { ...gap };
+    if (hasPrefix) {
+      updatedGap.title = `${newPrefix}${title}`;
+    }
+    if (id && idHasPrefix) {
+      updatedGap.id = `gap_${numStr}`;
+    }
+    return updatedGap;
+  });
+
+  return reindexedGaps;
 }
 
 export default async function handler(req, res) {
@@ -92,7 +149,24 @@ export default async function handler(req, res) {
     const transcript = analysis?.transcript || "";
     if (transcript.length < 200) return res.status(400).json({ error: "Transcript too short" });
 
-    const targetPlatform = req.body.targetPlatform || analysis?.metadata?.content_target || "youtube";
+    const rawPlatform = req.body.targetPlatform || analysis?.metadata?.content_target || "youtube";
+    const targetPlatform = (typeof rawPlatform === "string" ? rawPlatform : "youtube").trim() || "youtube";
+
+    console.log(`[analyze-gaps] targetPlatform resolved to: "${targetPlatform}" (from req.body: "${req.body.targetPlatform}", from metadata: "${analysis?.metadata?.content_target}")`);
+
+    // Exact-match lookup table — must mirror the platform IDs used in the UI
+    const PLATFORM_INSTRUCTIONS = {
+      "youtube":           "Generate 3 high-CTR, curiosity-driven YouTube video titles, and 5 SEO YouTube tags.",
+      "blog":              "Generate 3 SEO-optimized H1 Blog Titles, and 5 SEO keywords.",
+      "linkedin":          "Generate 3 scroll-stopping LinkedIn first-line hooks, and 5 relevant LinkedIn hashtags.",
+      "linkedin_carousel": "Generate 3 engaging LinkedIn Carousel slide headlines, and 5 relevant LinkedIn hashtags.",
+      "x":                 "Generate 3 punchy single-post Tweet hooks, and 5 Twitter hashtags.",
+      "x_thread":          "Generate 3 compelling Twitter/X thread opening hooks, and 5 Twitter hashtags.",
+      "email_newsletter":  "Generate 3 engaging Email Subject Lines optimised for open rates, and 5 core topic tags.",
+    };
+
+    const platformInstructions = PLATFORM_INSTRUCTIONS[targetPlatform.toLowerCase()]
+      || `Generate 3 platform-specific titles for ${targetPlatform}, and 5 relevant keywords.`;
 
     /* ENGINE 1 — GAP ANALYSER PROMPT (GapGens v2.0) */
     const gapSystemPrompt = `You are GapGens Gap Analyser — a senior content strategist and structural editor with 20 years of experience identifying exactly why content fails to build authority, trust, and action.
@@ -151,7 +225,16 @@ Rules:
 - Do not output any summary or closing statement after the last gap
 - Minimum gaps to identify: 5
 - Maximum gaps to identify: 12
-- If fewer than 5 genuine gaps exist, note that the content is strong and identify what minor improvements remain`;
+- If fewer than 5 genuine gaps exist, note that the content is strong and identify what minor improvements remain
+
+For the ${targetPlatform} platform, you must also: ${platformInstructions}
+After listing all the identified content gaps, you MUST append these two sections exactly using this syntax at the very end of your response:
+[STRATEGIC TITLES]
+- {Platform specific title 1}
+- {Platform specific title 2}
+- {Platform specific title 3}
+[INDEXED KEYWORDS]
+Keyword 1, Keyword 2, Keyword 3, Keyword 4, Keyword 5`;
 
     const gapUserMessage = `Analyse this transcript and identify all content and structural gaps.
 Target platform: ${targetPlatform}
@@ -168,19 +251,66 @@ ${transcript.slice(0, 6000)}`;
     });
 
     const rawGapText = gapResp.content[0].text;
-    const gaps = parseGapText(rawGapText);
+
+    let gapTextToParse = rawGapText;
+    let titles = [];
+    let keywords = [];
+
+    const parts = rawGapText.split(/\[STRATEGIC TITLES\]/i);
+    if (parts.length > 1) {
+      gapTextToParse = parts[0];
+      
+      const rest = parts[1].split(/\[INDEXED KEYWORDS\]/i);
+      const titlesBlock = rest[0] || "";
+      const keywordsBlock = rest[1] || "";
+      
+      // Parse titles
+      titles = titlesBlock
+        .split("\n")
+        .map(line => line.trim())
+        .map(line => line.replace(/^[\-\*\s\d\.\:]+/, "").replace(/^['"\s]+|['"\s]+$/g, "").trim())
+        .filter(Boolean);
+        
+      // Parse keywords
+      keywords = keywordsBlock
+        .split(/,|\n/)
+        .map(k => k.replace(/[\#\-]/g, "").trim())
+        .map(k => k.replace(/^['"\s]+|['"\s]+$/g, "").trim())
+        .filter(Boolean);
+    } else {
+      const keywordsIndex = rawGapText.split(/\[INDEXED KEYWORDS\]/i);
+      if (keywordsIndex.length > 1) {
+        gapTextToParse = keywordsIndex[0];
+        keywords = keywordsIndex[1]
+          .split(/,|\n/)
+          .map(k => k.replace(/[\#\-]/g, "").trim())
+          .map(k => k.replace(/^['"\s]+|['"\s]+$/g, "").trim())
+          .filter(Boolean);
+      }
+    }
+
+    let gaps = parseGapText(gapTextToParse);
+    if (gaps.length === 0 && gapTextToParse !== rawGapText) {
+      gaps = parseGapText(rawGapText);
+    }
 
     // Fallback: generate summary from first gap descriptions
     const summary = gaps.length > 0
       ? `${gaps.length} content gaps identified. Key issues: ${gaps.filter(g => g.severity === "CRITICAL").map(g => g.title).slice(0, 2).join(", ") || gaps[0]?.title}.`
       : "Gap analysis complete.";
 
-    // Generate title suggestions from transcript
-    const titleWords = transcript.split(/\s+/).slice(0, 50).join(" ");
-    const titles = []; // Kept empty to avoid extra API call; can be populated if needed
-    const keywords = []; // Same
+    // Save to DB (under metadata and fallback columns for full safety)
+    const existingMetadata = analysis?.metadata || {};
+    const newMetadata = {
+      ...existingMetadata,
+      strategic_titles: titles,
+      indexed_keywords: keywords,
+      gaps,
+      summary,
+      titles,
+      keywords
+    };
 
-    // Save to DB
     await supabase
       .from("analyses")
       .update({
@@ -188,6 +318,7 @@ ${transcript.slice(0, 6000)}`;
         gaps,
         titles,
         keywords,
+        metadata: newMetadata
       })
       .eq("id", aId);
 
@@ -197,6 +328,8 @@ ${transcript.slice(0, 6000)}`;
       summary,
       titles,
       keywords,
+      strategic_titles: titles,
+      indexed_keywords: keywords,
     });
 
   } catch (err) {
