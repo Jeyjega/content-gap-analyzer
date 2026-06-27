@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import Anthropic from "@anthropic-ai/sdk";
-import { checkEntitlement, incrementUsage } from "../../lib/entitlements";
+import { checkEntitlement, incrementUsage, calculateCreditCost } from "../../lib/entitlements";
 
 export const config = {
   maxDuration: 300,
@@ -348,11 +348,31 @@ export default async function handler(req, res) {
     const currentPlatform = analysis.metadata?.content_target || "youtube";
     const isSamePlatformRegen = isRegenerate && targetPlatform === currentPlatform;
 
+    /* DYNAMIC CREDIT COST — mirrors the frontend calcCreditCost formula exactly */
+    // Derive input type from the stored analysis metadata (youtube | blog | text)
+    const transcript = analysis?.transcript || "";
+    if (transcript.length < 200) return res.status(400).json({ error: "Transcript too short" });
+
+    const gaps = req.body.gaps || analysis.gaps || [];
+    const wordCount = transcript.split(/\s+/).filter(Boolean).length;
+
+    // Map stored metadata.type → formula input type
+    const rawInputType = (analysis.metadata?.type || "text").toLowerCase();
+    const inputType = rawInputType === "youtube" ? "youtube"
+                    : rawInputType === "blog"    ? "blog"
+                    : "text";
+
+    // calculateCreditCost: text = wc/1000, blog = wc/1000*1.2, youtube = wc/1000*1.5
+    // Rounded up to nearest 0.5 — identical to the UI estimate shown to the user.
+    const creditCost = Math.max(calculateCreditCost(wordCount, inputType), 0.5);
+
+    console.log(`[generate-script] creditCost=${creditCost} (wordCount=${wordCount}, inputType=${inputType}, isRegenerate=${isRegenerate})`);
+
     /* ENTITLEMENT CHECK (skip for same-platform regeneration) */
     if (!isSamePlatformRegen) {
-      const { allowed, error: entitlementError, code } = await checkEntitlement(user.id);
+      const { allowed, error: entitlementError, code, creditsRemaining } = await checkEntitlement(user.id, creditCost);
       if (!allowed) {
-        console.warn(`Entitlement blocked for user ${user.id}: ${entitlementError}`);
+        console.warn(`Entitlement blocked for user ${user.id}: needs ${creditCost} credits, has ${creditsRemaining}`);
         return res.status(403).json({ error: entitlementError, code, upgrade: true });
       }
     }
@@ -360,12 +380,6 @@ export default async function handler(req, res) {
     /* UPDATE METADATA */
     const newMetadata = { ...analysis.metadata, content_target: targetPlatform };
     await supabase.from("analyses").update({ metadata: newMetadata }).eq("id", aId);
-
-    const transcript = analysis?.transcript || "";
-    if (transcript.length < 200) return res.status(400).json({ error: "Transcript too short" });
-
-    const gaps = req.body.gaps || analysis.gaps || [];
-    const wordCount = transcript.split(/\s+/).filter(Boolean).length;
 
     // Calculate the output length ceiling based on input script word count
     let baseCeiling = 2000;
@@ -466,9 +480,10 @@ Follow all platform output rules, gap resolution tiers, tone definitions, and ab
 
     await supabase.from("analyses").update(updatePayload).eq("id", aId);
 
-    /* Increment usage only after successful generation (not on regeneration) */
+    /* Deduct credits only after successful generation (not on same-platform regeneration) */
     if (!isRegenerate) {
-      await incrementUsage(user.id, 1);
+      await incrementUsage(user.id, creditCost);
+      console.log(`[generate-script] Deducted ${creditCost} credits for user ${user.id}`);
     }
 
     res.write(JSON.stringify({ status: "script_ready", script: renderedScript }) + "\n");

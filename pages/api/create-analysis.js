@@ -139,8 +139,14 @@ export default async function handler(req, res) {
       });
     }
 
-    // Increment usage stats for Freemium enforcement
-    await incrementUsage(user.id, 'analysis');
+    // NOTE: Credit cost is NOT charged here.
+    // The dynamic credit cost (based on word count + input type) is calculated
+    // and deducted in /api/generate-script.js after successful script generation.
+    // Charging at that step (a) avoids double-charging and (b) ensures users
+    // are only debited when they receive the full value of the analysis.
+    // No-op call with 0 to preserve the DB row initialisation logic without
+    // corrupting the analyses_used column with a NaN value.
+    await incrementUsage(user.id, 0);
 
     return res.status(200).json({ analysisId: data.id, analysis: data, is_interview: isInterview });
 
