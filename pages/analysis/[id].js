@@ -379,10 +379,19 @@ export default function AnalysisView() {
                       {parsedAnalysis?.gaps && parsedAnalysis.gaps.length > 0 ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           {parsedAnalysis.gaps.map((g, i) => {
-                            const isCritical = i === 0;
-                            const priority = isCritical ? "CRITICAL" : "MEDIUM";
-                            const badgeColor = isCritical ? "bg-[#10B981]/10 text-[#10B981] border-[#10B981]/30" : "bg-slate-500/10 text-slate-400 border-slate-500/30";
-                            const numColor = isCritical ? "text-[#10B981]" : "text-[#0D9488]";
+                            const severity = (g.severity || (i === 0 ? "CRITICAL" : "MEDIUM")).toUpperCase();
+                            const isCritical = severity === "CRITICAL";
+                            const isMedium = severity === "MEDIUM";
+                            const badgeColor = isCritical 
+                              ? "bg-[#10B981]/10 text-[#10B981] border-[#10B981]/30" 
+                              : isMedium
+                                ? "bg-slate-500/10 text-slate-400 border-slate-500/30"
+                                : "bg-blue-500/10 text-blue-400 border-blue-500/30";
+                            const numColor = isCritical 
+                              ? "text-[#10B981]" 
+                              : isMedium 
+                                ? "text-[#0D9488]" 
+                                : "text-blue-400";
                             
                             return (
                               <div key={i} className="bg-[#111827] p-6 group flex items-start gap-4 shadow-none">
@@ -395,11 +404,11 @@ export default function AnalysisView() {
                                       {g.title || `Gap ${i + 1}`}
                                     </h4>
                                     <span className={`text-[8px] font-mono font-bold uppercase tracking-widest px-1.5 py-0.5 border ${badgeColor}`}>
-                                      {priority}
+                                      {severity}
                                     </span>
                                   </div>
-                                  {g.suggestion && (
-                                    <p className="text-slate-400 text-xs font-mono leading-relaxed opacity-80">{g.suggestion}</p>
+                                  {(g.description || g.suggestion) && (
+                                    <p className="text-slate-400 text-xs font-mono leading-relaxed opacity-80">{g.description || g.suggestion}</p>
                                   )}
                                 </div>
                               </div>
@@ -655,7 +664,7 @@ export default function AnalysisView() {
               {parsedAnalysis.gaps.map((g, i) => (
                 <div key={i} className="mb-4">
                   <h3 className="font-bold text-gray-900">• {g.title}</h3>
-                  {g.suggestion && <p className="text-gray-700 mt-1 ml-4">{g.suggestion}</p>}
+                  {(g.description || g.suggestion) && <p className="text-gray-700 mt-1 ml-4">{g.description || g.suggestion}</p>}
                 </div>
               ))}
             </div>

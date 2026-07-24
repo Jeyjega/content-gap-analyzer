@@ -31,6 +31,62 @@ export function getDeviceId() {
 export const deviceId = getDeviceId();
 
 // -----------------------------
+// DEVICE FINGERPRINT (FRAUD PREVENTION)
+// -----------------------------
+export function getDeviceFingerprint(): string {
+  if (typeof window === 'undefined') return '';
+
+  const KEY = 'gapgens_device_fp';
+  const cached = localStorage.getItem(KEY);
+  if (cached) return cached;
+
+  let canvasData = '';
+  try {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      canvas.width = 200;
+      canvas.height = 30;
+      ctx.textBaseline = 'top';
+      ctx.font = "14px 'Arial'";
+      ctx.fillStyle = '#f60';
+      ctx.fillRect(125, 1, 62, 20);
+      ctx.fillStyle = '#069';
+      ctx.fillText('GapGensDeviceFp', 2, 15);
+      ctx.fillStyle = 'rgba(102, 204, 0, 0.7)';
+      ctx.fillText('GapGensDeviceFp', 4, 17);
+      canvasData = canvas.toDataURL();
+    }
+  } catch (e) {
+    // Canvas reading might be blocked/restricted
+  }
+
+  const components = [
+    navigator.userAgent,
+    navigator.language,
+    screen.colorDepth,
+    screen.width + 'x' + screen.height,
+    new Date().getTimezoneOffset(),
+    navigator.hardwareConcurrency || '',
+    (navigator as any).deviceMemory || '',
+    canvasData
+  ].join('|');
+
+  // Simple and fast string hashing
+  let hash = 0;
+  for (let i = 0; i < components.length; i++) {
+    const char = components.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash |= 0; // Convert to 32bit integer
+  }
+
+  const fingerprint = 'fp-' + Math.abs(hash).toString(16);
+  localStorage.setItem(KEY, fingerprint);
+  return fingerprint;
+}
+
+
+// -----------------------------
 // SUPABASE CLIENT
 // -----------------------------
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {

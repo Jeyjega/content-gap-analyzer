@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabaseClient';
+import { supabase, getDeviceFingerprint } from '@/lib/supabaseClient';
 
 export default function EmailAuthForm() {
     const router = useRouter();
@@ -28,44 +28,33 @@ export default function EmailAuthForm() {
                 if (error) throw error;
                 setMessage('Check your email for the password reset link.');
             } else if (isSignUp) {
-                const { data, error } = await supabase.auth.signUp({
+                const fingerprint = getDeviceFingerprint();
+
+                const signupRes = await fetch('/api/auth/signup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: email.trim(),
+                        password: password.trim(),
+                        device_id: fingerprint,
+                    }),
+                });
+
+                const signupData = await signupRes.json();
+                if (!signupRes.ok) {
+                    throw new Error(signupData.error || 'Signup failed');
+                }
+
+                // Sign in immediately on the client using the credentials
+                const { error: signInError, data: signInData } = await supabase.auth.signInWithPassword({
                     email: email.trim(),
                     password: password.trim(),
                 });
-                if (error) throw error;
+                if (signInError) throw signInError;
 
-                if (data.session) {
-                    // User is logged in immediately
-                    console.log('SignUp: Session found immediately, redirecting');
-                    router.push('/');
-                    router.refresh();
-                } else if (data.user && data.user.identities && data.user.identities.length === 0) {
-                    // User already exists, try signing in
-                    console.log('SignUp: User exists, attempting login');
-                    const { error: signInError, data: signInData } = await supabase.auth.signInWithPassword({
-                        email: email.trim(),
-                        password: password.trim(),
-                    });
-                    if (signInError) throw signInError;
-                    console.log('SignUp: Login successful', signInData);
-                    router.push('/');
-                    router.refresh();
-                } else {
-                    // If no session, try signing in manually just in case (for some Supabase configs)
-                    console.log('SignUp: No session, attempting manual login');
-                    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-                        email: email.trim(),
-                        password: password.trim(),
-                    });
-                    if (!signInError && signInData.session) {
-                        console.log('SignUp: Manual login successful');
-                        router.push('/');
-                        router.refresh();
-                    } else {
-                        console.log('SignUp: Manual login failed or no session', signInError);
-                        setMessage('Check your email to confirm your account.');
-                    }
-                }
+                console.log('SignUp: Login successful', signInData);
+                router.push('/');
+                router.refresh();
             } else {
                 const { error } = await supabase.auth.signInWithPassword({
                     email: email.trim(),

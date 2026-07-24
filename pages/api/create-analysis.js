@@ -1,7 +1,7 @@
 // pages/api/create-analysis.js
 
 import { createClient } from "@supabase/supabase-js";
-import { incrementUsage, checkEntitlement } from "../../lib/entitlements";
+import { incrementUsage, checkEntitlement, calculateCreditCost } from "../../lib/entitlements";
 
 function pickNiceTitle({ providedTitle, videoId, metadata, transcript }) {
   if (providedTitle && String(providedTitle).trim()) return String(providedTitle).trim();
@@ -99,10 +99,18 @@ export default async function handler(req, res) {
     });
 
     const finalType = type || "youtube";
+    const countWords = (text) =>
+      !text || text.trim() === "" ? 0 : text.trim().split(/\s+/).filter(Boolean).length;
+    const wordCount = countWords(transcript);
+    const calculatedCost = Math.max(calculateCreditCost(wordCount, finalType), 0.5);
+    const baseAnalysisCost = Math.round(calculatedCost * 100) / 100;
+    console.log(`[create-analysis] WordCount: ${wordCount}, InputType: ${finalType}, Calculated Cost: ${baseAnalysisCost}`);
+
     const finalMetadata = { 
       ...(metadata || {}), 
       type: finalType, 
-      is_interview: isInterview
+      is_interview: isInterview,
+      base_analysis_cost: baseAnalysisCost
     };
 
     const payload = {

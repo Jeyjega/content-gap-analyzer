@@ -89,6 +89,56 @@ const parseError = (err) => {
   return { message: msg };
 };
 
+function ProStats({ user }) {
+  const [stats, setStats] = useState({ totalScripts: 0, hoursSaved: 0 });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user) return;
+    async function fetchStats() {
+      try {
+        const { data, error } = await supabase
+          .from("analyses")
+          .select("generated_script");
+        
+        if (error) throw error;
+        
+        const scripts = (data || []).filter(item => item.generated_script && item.generated_script.trim().length > 0);
+        const totalScripts = scripts.length;
+        const hoursSaved = (totalScripts * 2.5).toFixed(1);
+        
+        setStats({ totalScripts, hoursSaved });
+      } catch (err) {
+        console.error("Error fetching pro stats:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchStats();
+  }, [user]);
+
+  if (loading) {
+    return (
+      <div className="bg-[#111827]/40 border border-amber-500/20 p-4 font-mono text-[9px] text-slate-500 uppercase tracking-widest animate-pulse">
+        Calculating Pro Metrics...
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-[#111827]/80 border border-amber-500/30 p-6 shadow-[0_0_15px_rgba(245,158,11,0.05)] grid grid-cols-2 gap-4">
+      <div>
+        <div className="font-mono text-[9px] text-amber-500/70 uppercase tracking-widest mb-1">Total Scripts Generated</div>
+        <div className="text-2xl font-bold font-display text-white">{stats.totalScripts}</div>
+      </div>
+      <div>
+        <div className="font-mono text-[9px] text-amber-500/70 uppercase tracking-widest mb-1">Estimated Hours Saved</div>
+        <div className="text-2xl font-bold font-display text-amber-400">{stats.hoursSaved} <span className="text-xs text-slate-500">HRS</span></div>
+      </div>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const { user, session, loading } = useAuth();
   const router = useRouter();
@@ -104,6 +154,9 @@ export default function Dashboard() {
   const [userPlan, setUserPlan] = useState("free");
   const [credits, setCredits] = useState({ used: 0, total: 30, remaining: 30, resetAt: null });
   const [estimatedCost, setEstimatedCost] = useState(null);
+  const [baseAnalysisCost, setBaseAnalysisCost] = useState(0);
+  const [proToneValue, setProToneValue] = useState(50);
+  const [proDepthValue, setProDepthValue] = useState(50);
 
 
 
@@ -173,7 +226,7 @@ export default function Dashboard() {
         .eq("user_id", user.id)
         .maybeSingle();
 
-      const planCredits = plan === "pro" ? 100 : plan === "standard" ? 30 : 3;
+      const planCredits = plan === "pro" ? 150 : plan === "standard" ? 30 : 3;
       let creditsUsed = parseFloat(usageData?.analyses_used) || 0;
       const resetAt = usageData?.reset_at ? new Date(usageData.reset_at) : new Date(0);
 
@@ -191,15 +244,61 @@ export default function Dashboard() {
     fetchEntitlements();
   }, [user, analysisResult, generatedScript]); // Refresh when analysis completes
 
-  // Dynamic credit estimate for text mode
+  // Dynamic credit estimate
   useEffect(() => {
     if (mode === "text") {
       const wc = countWords(userText);
       setEstimatedCost(wc > 0 ? calcCreditCost(wc, "text") : null);
     } else {
-      setEstimatedCost(null); // URL modes: cost known only after transcription
+      // URL modes: cost known only after transcription/extraction
+      const wc = countWords(transcript);
+      setEstimatedCost(wc > 0 ? calcCreditCost(wc, mode) : null);
     }
-  }, [userText, mode]);
+  }, [userText, transcript, mode]);
+
+  // Sync analysis metadata from DB when analysisId or status changes
+  useEffect(() => {
+    if (!analysisId) return;
+
+    async function fetchAnalysisMetadata() {
+      try {
+        const { data, error } = await supabase
+          .from("analyses")
+          .select("metadata")
+          .eq("id", analysisId)
+          .single();
+
+        if (error) throw error;
+
+        if (data?.metadata) {
+          if (data.metadata.base_analysis_cost !== undefined && data.metadata.base_analysis_cost !== null) {
+            setBaseAnalysisCost(Number(data.metadata.base_analysis_cost));
+          }
+          setAnalysisResult(prev => {
+            if (!prev) return null;
+            return {
+              ...prev,
+              metadata: {
+                ...prev.metadata,
+                ...data.metadata
+              }
+            };
+          });
+        }
+      } catch (err) {
+        console.error("Failed to fetch analysis metadata:", err);
+      }
+    }
+
+    fetchAnalysisMetadata();
+  }, [analysisId, status]);
+
+  // Helper to fetch refinement cost (50% of base analysis cost with minimum floor of 0.5)
+  const getRefinementCost = () => {
+    const calculatedCost = baseAnalysisCost / 2;
+    const cost = Math.max(0.5, calculatedCost).toFixed(2);
+    return cost;
+  };
 
   // Rotate helper messages
   useEffect(() => {
@@ -243,10 +342,14 @@ export default function Dashboard() {
 
   const [contentTarget, setContentTarget] = useState("youtube"); // 'youtube' | 'blog' | 'linkedin' | 'x'
   const [selectedPlatform, setSelectedPlatform] = useState(null); // For post-analysis switching
+  const targetPlatform = selectedPlatform || contentTarget;
 
   const [isHighlighting, setIsHighlighting] = useState(false);
   const [isTranscriptExpanded, setIsTranscriptExpanded] = useState(true);
   const [scriptCopied, setScriptCopied] = useState(false);
+  const [storyboardCopied, setStoryboardCopied] = useState(false);
+  const [spokenCopied, setSpokenCopied] = useState(false);
+  const [hideVisualCues, setHideVisualCues] = useState(false);
   const textInputRef = useRef(null);
   const resultsRef = useRef(null);
 
@@ -362,8 +465,11 @@ export default function Dashboard() {
           analysisId,
           formatMode: formatChoice,
           tone: tone,
+          targetPlatform: targetPlatform,
           gaps: analysisResult?.gaps,
-          resolvedCriticalGaps: facts
+          resolvedCriticalGaps: facts,
+          proTone: userPlan === "pro" ? proToneValue : undefined,
+          proDepth: userPlan === "pro" ? proDepthValue : undefined
         })
       });
 
@@ -550,7 +656,9 @@ export default function Dashboard() {
           titles: analysisResult.titles,
           keywords: analysisResult.keywords,
           formatMode: "monologue",
-          resolvedCriticalGaps
+          resolvedCriticalGaps,
+          proTone: userPlan === "pro" ? proToneValue : undefined,
+          proDepth: userPlan === "pro" ? proDepthValue : undefined
         })
       });
 
@@ -647,7 +755,7 @@ export default function Dashboard() {
           bullets: [
             `This analysis requires ${cost} credits. You have ${credits.remaining.toFixed(1)} credits remaining.`,
             `Your credits reset on ${resetDate}.`,
-            userPlan === "standard" ? "Upgrade to Pro for 100 credits/month." : "Upgrade to Standard for 30 credits/month."
+            userPlan === "standard" ? "Upgrade to Pro for 150 credits/month." : "Upgrade to Standard for 30 credits/month."
           ],
           primaryActionText: "Upgrade Plan"
         });
@@ -952,13 +1060,13 @@ export default function Dashboard() {
 
   return (
     <Layout bgClass="bg-[#080809]" headerVariant="dark">
-      <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-12 relative overflow-hidden">
+      <div className={`max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-12 relative overflow-hidden ${userPlan === "pro" ? "theme-pro" : ""}`}>
         {/* Ambient Subtle Glow */}
         <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-[#10B981]/5 blur-[150px] rounded-full pointer-events-none -z-10"></div>
         
-        {/* Credit Meter */}
+        {/* Credit Meter & Pro Stats */}
         {user && (
-          <div className="max-w-4xl mx-auto mb-8">
+          <div className="max-w-4xl mx-auto mb-8 flex flex-col gap-4">
             <div className="bg-[#111827]/80 border border-white/10 p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 <span className="font-mono text-[10px] uppercase tracking-widest text-slate-500">CREDIT BALANCE</span>
@@ -966,13 +1074,61 @@ export default function Dashboard() {
                   {credits.used.toFixed(1)} of {credits.total} credits used this month
                 </span>
               </div>
-              <div className="w-full sm:w-48 h-1.5 bg-[#080809] border border-white/10 relative overflow-hidden">
-                <div
-                  className={`absolute top-0 left-0 h-full transition-all duration-500 ${credits.remaining <= 0 ? "bg-red-500" : credits.remaining / credits.total < 0.2 ? "bg-amber-500" : "bg-[#10B981]"}`}
-                  style={{ width: `${Math.min(100, (credits.used / credits.total) * 100)}%` }}
-                />
+              <div className="flex flex-col items-end gap-1.5 w-full sm:w-auto">
+                {/* Tier Badge & Upgrade Hook */}
+                <div className="flex items-center gap-2 font-mono text-[9px] tracking-wider select-none">
+                  {userPlan === "pro" ? (
+                    <span className="text-amber-400 font-bold uppercase">Pro Member</span>
+                  ) : userPlan === "standard" ? (
+                    <span className="text-blue-400 font-bold uppercase">Standard Member</span>
+                  ) : (
+                    <span className="text-slate-500 font-bold uppercase">Free Member</span>
+                  )}
+                  
+                  {/* Upgrade / Reinforcement Hook */}
+                  {userPlan === "pro" ? (
+                    <span className="text-[#10B981] font-bold uppercase opacity-80 animate-pulse">Pro Status Active</span>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        setUpgradeModalConfig({
+                          headline: "Upgrade to Pro",
+                          bullets: [
+                            "Unlock 150 credits per month.",
+                            "Get priority processing and advanced script styles.",
+                            "Full access to intelligence engine features."
+                          ],
+                          primaryActionText: "Upgrade Plan"
+                        });
+                        setUpgradeModalOpen(true);
+                      }}
+                      className="text-amber-500 hover:text-amber-400 underline cursor-pointer transition-colors"
+                      title="Upgrade to Pro for more credits & advanced features"
+                    >
+                      (Upgrade to Pro)
+                    </button>
+                  )}
+                </div>
+
+                <div className={`w-full sm:w-48 h-1.5 bg-[#080809] border relative overflow-hidden transition-all ${
+                  userPlan === "standard" ? "border-blue-500/50 shadow-[0_0_8px_rgba(59,130,246,0.2)]" : "border-white/10"
+                }`}>
+                  <div
+                    className={`absolute top-0 left-0 h-full transition-all duration-500 ${
+                      userPlan === "pro"
+                        ? "bg-gradient-to-r from-yellow-500 via-amber-400 to-yellow-600 shadow-[0_0_8px_rgba(245,158,11,0.5)]"
+                        : credits.remaining <= 0
+                        ? "bg-red-500"
+                        : credits.remaining / credits.total < 0.2
+                        ? "bg-amber-500"
+                        : "bg-[#10B981]"
+                    }`}
+                    style={{ width: `${Math.min(100, (credits.used / credits.total) * 100)}%` }}
+                  />
+                </div>
               </div>
             </div>
+            {userPlan === "pro" && <ProStats user={user} />}
             {credits.remaining <= 0 && (
               <div className="mt-1 font-mono text-[10px] text-red-400 text-right">
                 {userPlan === "pro"
@@ -1022,7 +1178,7 @@ export default function Dashboard() {
           )}
 
           <div className="relative group">
-            <div className="bg-[#111827]/80 backdrop-blur-md border border-white/10 overflow-hidden rounded-none shadow-2xl">
+            <div className="generation-area bg-[#111827]/80 backdrop-blur-md border border-white/10 overflow-hidden rounded-none shadow-2xl">
 
               {/* Mode Tabs */}
               <div className="flex border-b border-white/5 bg-[#080809]">
@@ -1240,6 +1396,17 @@ export default function Dashboard() {
                         )}
                       </div>
                     </Button>
+                    {userPlan === "pro" && (
+                      <div 
+                        className="mt-2 flex items-center gap-1 font-mono text-[9px] text-amber-400 tracking-wider select-none animate-pulse cursor-help"
+                        title="Priority Processing Enabled"
+                      >
+                        <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 20 20">
+                          <path d="M11.3 1.046A1 1 0 0112 2v6.5h4.5a1 1 0 01.82 1.573l-7 10A1 1 0 018.5 19v-6.5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.381z" />
+                        </svg>
+                        Priority Processing Enabled
+                      </div>
+                    )}
 
                     {((userPlan === "free" && usage.analyses >= 3) || (userPlan === "standard" && usage.analyses >= 20)) && (
                       <div className="mt-3 text-center lg:text-right">
@@ -1455,94 +1622,301 @@ export default function Dashboard() {
               )}
             </div>
             
-            <div className="flex items-center gap-4 mb-4">
-              {/* Platform Selector */}
-              <div className="relative group">
-                <select
-                  value={selectedPlatform || contentTarget}
-                  onChange={(e) => handleRegenerateScript(e.target.value)}
-                  disabled={isBusy}
-                  className="appearance-none bg-[#080809] border border-white/20 rounded-none py-2 pl-3 pr-10 font-mono text-xs font-bold tracking-widest uppercase text-white focus:outline-none focus:border-[#10B981] hover:border-white/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                >
-                  <option value="youtube">YOUTUBE</option>
-                  <option value="blog">BLOG</option>
-                  <option value="linkedin">LINKEDIN — POST</option>
-                  <option value="linkedin_carousel">LINKEDIN CAROUSEL</option>
-                  <option value="x">X — SINGLE POST</option>
-                  <option value="x_thread">X — THREAD</option>
-                  <option value="email_newsletter">NEWSLETTER</option>
-                </select>
-                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 group-hover:text-white transition-colors">
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                </div>
-              </div>
-            </div>
+            <div className="flex flex-col lg:flex-row gap-6">
+              {/* Left Column: Script Output */}
+              <div className="flex-grow min-w-0">
+                <div className="bg-[#080809] border border-white/10 shadow-inner relative overflow-hidden min-h-[200px]">
+                  <div className="absolute top-0 left-0 right-0 h-10 bg-[#080809] z-10 flex items-center px-4 justify-between border-b border-dashed border-white/10">
+                    <span className="font-mono text-[9px] uppercase tracking-widest font-bold text-slate-500">AI-GENERATED OUTPUT</span>
+                    <div className="flex items-center gap-2">
+                      {/* Hide Visual Cues Toggle — only shown for YouTube target platform */}
+                      {targetPlatform === "youtube" && (generatedScript || analysisResult?.suggested_script) && (
+                        <label className="flex items-center gap-1.5 cursor-pointer group">
+                          <input
+                            type="checkbox"
+                            id="hide-visual-cues-toggle"
+                            checked={hideVisualCues}
+                            onChange={(e) => setHideVisualCues(e.target.checked)}
+                            className="w-3 h-3 accent-[#10B981] cursor-pointer"
+                          />
+                          <span className="font-mono text-[8px] uppercase tracking-widest text-slate-500 group-hover:text-slate-300 transition-colors select-none">Hide Cues</span>
+                        </label>
+                      )}
+                      {/* Regenerate Button */}
+                      {(() => {
+                        const isRegenerate = true;
+                        const cost = getRefinementCost();
+                        const costNum = parseFloat(cost);
+                        const hasInsufficientCredits = credits.remaining < costNum;
 
-            <div className="bg-[#080809] border border-white/10 shadow-inner relative overflow-hidden min-h-[200px]">
-              <div className="absolute top-0 left-0 right-0 h-10 bg-[#080809] z-10 flex items-center px-4 justify-between border-b border-dashed border-white/10">
-                <span className="font-mono text-[9px] uppercase tracking-widest font-bold text-slate-500">AI-GENERATED OUTPUT</span>
-                <div className="flex items-center gap-2">
-                  {/* Regenerate Button */}
-                  <Tooltip content="">
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      className="!rounded-none !bg-transparent !border !border-white/10 !text-slate-400 hover:!text-[#10B981] hover:!border-[#10B981]/50 h-7 px-3 gap-2 flex items-center justify-center transition-all group shadow-none"
-                      onClick={() => handleRegenerateScript(selectedPlatform || contentTarget)}
-                      disabled={isBusy || (!generatedScript && !analysisResult?.suggested_script)}
-                      title="Regenerate script"
-                    >
-                      <svg className={`w-3.5 h-3.5 group-hover:text-[#10B981] transition-colors ${status === 'regenerating' ? 'animate-spin text-[#10B981]' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                      </svg>
-                      <span className="font-mono text-[9px] uppercase tracking-widest font-bold">REGENERATE</span>
-                    </Button>
-                  </Tooltip>
+                        console.log("Base Cost:", baseAnalysisCost, "Refinement Cost Display:", cost);
 
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    className="!rounded-none !bg-transparent !border !border-white/10 !text-slate-400 hover:!text-white hover:!bg-white/10 h-7 px-3 text-[9px] font-mono font-bold tracking-widest uppercase shadow-none"
-                    onClick={() => {
-                      navigator.clipboard.writeText(analysisResult?.suggested_script || generatedScript || "");
-                      setScriptCopied(true);
-                      setTimeout(() => setScriptCopied(false), 1200);
-                    }}
-                    disabled={!generatedScript && !analysisResult?.suggested_script}
-                  >
-                    {scriptCopied ? (
-                      <div className="flex items-center gap-1.5 text-[#10B981]">
-                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                        <span>COPIED</span>
+                        return (
+                          <Tooltip content={hasInsufficientCredits ? `Need ${cost} credits (Have ${credits.remaining.toFixed(2)})` : "Regenerate script"}>
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              className={`!rounded-none !bg-transparent !border ${hasInsufficientCredits ? '!border-red-500/20 !text-red-400/60 cursor-not-allowed' : '!border-white/10 !text-slate-400 hover:!text-[#10B981] hover:!border-[#10B981]/50'} h-7 px-3 gap-2 flex items-center justify-center transition-all group shadow-none`}
+                              onClick={() => !hasInsufficientCredits && handleRegenerateScript(selectedPlatform || contentTarget)}
+                              disabled={isBusy || (!generatedScript && !analysisResult?.suggested_script) || hasInsufficientCredits}
+                              title={hasInsufficientCredits ? `Insufficient Credits (Need ${cost})` : "Regenerate script"}
+                            >
+                              <svg className={`w-3.5 h-3.5 ${hasInsufficientCredits ? 'text-red-400/40' : 'group-hover:text-[#10B981]'} transition-colors ${status === 'regenerating' ? 'animate-spin text-[#10B981]' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                              </svg>
+                              <span className="font-mono text-[9px] uppercase tracking-widest font-bold flex items-center gap-1.5">
+                                {isRegenerate ? (
+                                  hasInsufficientCredits ? (
+                                    <>
+                                      <span>Insufficient Credits</span>
+                                      <span className="text-[7.5px] text-red-400/60 font-mono tracking-normal normal-case font-medium">
+                                        (Need {cost})
+                                      </span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <span>Regenerate Script</span>
+                                      <span className="text-[7.5px] text-slate-500 font-mono tracking-normal normal-case font-medium">
+                                        (Costs {cost} Credits)
+                                      </span>
+                                    </>
+                                  )
+                                ) : (
+                                  <span>REGENERATE</span>
+                                )}
+                              </span>
+                            </Button>
+                          </Tooltip>
+                        );
+                      })()}
+
+                      {/* Copy Spoken Text — strips [Visual Cue] and [MM:SS] tags */}
+                      {targetPlatform === "youtube" && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          className="!rounded-none !bg-transparent !border !border-white/10 !text-slate-400 hover:!text-white hover:!bg-white/10 h-7 px-3 text-[9px] font-mono font-bold tracking-widest uppercase shadow-none"
+                          onClick={() => {
+                            const raw = analysisResult?.suggested_script || generatedScript || "";
+                            const spokenOnly = raw
+                              .split("\n")
+                              .filter(line => !/^\[Visual Cue:/i.test(line.trim()) && !/^\[\d{1,2}:\d{2}\]/.test(line.trim()))
+                              .join("\n")
+                              .replace(/\n{3,}/g, "\n\n")
+                              .trim();
+                            navigator.clipboard.writeText(spokenOnly);
+                            setSpokenCopied(true);
+                            setTimeout(() => setSpokenCopied(false), 1200);
+                          }}
+                          disabled={!generatedScript && !analysisResult?.suggested_script}
+                          title="Copy script with cues and timestamps stripped out"
+                        >
+                          {spokenCopied ? (
+                            <div className="flex items-center gap-1.5 text-[#10B981]">
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                              <span>COPIED</span>
+                            </div>
+                          ) : (
+                            <span>COPY SPOKEN</span>
+                          )}
+                        </Button>
+                      )}
+
+                      {/* Copy Storyboard — full text with cues and timestamps intact */}
+                      {targetPlatform === "youtube" && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          className="!rounded-none !bg-transparent !border !border-white/10 !text-slate-400 hover:!text-[#10B981] hover:!border-[#10B981]/30 h-7 px-3 text-[9px] font-mono font-bold tracking-widest uppercase shadow-none"
+                          onClick={() => {
+                            navigator.clipboard.writeText(analysisResult?.suggested_script || generatedScript || "");
+                            setStoryboardCopied(true);
+                            setTimeout(() => setStoryboardCopied(false), 1200);
+                          }}
+                          disabled={!generatedScript && !analysisResult?.suggested_script}
+                          title="Copy full storyboard including visual cues and timestamps"
+                        >
+                          {storyboardCopied ? (
+                            <div className="flex items-center gap-1.5 text-[#10B981]">
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                              <span>COPIED</span>
+                            </div>
+                          ) : (
+                            <span>COPY STORYBOARD</span>
+                          )}
+                        </Button>
+                      )}
+
+                      {/* Copy All — original behaviour */}
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="!rounded-none !bg-transparent !border !border-white/10 !text-slate-400 hover:!text-white hover:!bg-white/10 h-7 px-3 text-[9px] font-mono font-bold tracking-widest uppercase shadow-none"
+                        onClick={() => {
+                          navigator.clipboard.writeText(analysisResult?.suggested_script || generatedScript || "");
+                          setScriptCopied(true);
+                          setTimeout(() => setScriptCopied(false), 1200);
+                        }}
+                        disabled={!generatedScript && !analysisResult?.suggested_script}
+                      >
+                        {scriptCopied ? (
+                          <div className="flex items-center gap-1.5 text-[#10B981]">
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                            <span>COPIED</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            <span>COPY ALL</span>
+                          </div>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="p-6 pt-14 whitespace-pre-wrap max-h-[500px] overflow-auto">
+                    {generatedScript || analysisResult?.suggested_script || analysisResult?.suggestedScript ? (
+                      <div className="font-mono text-sm leading-relaxed text-slate-200">
+                        {(() => {
+                          const raw = generatedScript || analysisResult?.suggested_script || analysisResult?.suggestedScript || "";
+                          const isYouTube = targetPlatform === "youtube";
+                          // Parse line-by-line for YouTube to apply styled blocks
+                          if (isYouTube) {
+                            return raw.split("\n").map((line, idx) => {
+                              const trimmed = line.trim();
+                              // [Visual Cue: ...] line
+                              if (/^\[Visual Cue:/i.test(trimmed)) {
+                                if (hideVisualCues) return null;
+                                return (
+                                  <div
+                                    key={idx}
+                                    className="my-2 px-3 py-1.5 bg-white/5 border-l-2 border-slate-600 text-slate-400 italic text-xs font-mono rounded-sm"
+                                  >
+                                    {trimmed}
+                                  </div>
+                                );
+                              }
+                              // [MM:SS] timestamp line
+                              if (/^\[\d{1,2}:\d{2}\]$/.test(trimmed)) {
+                                return (
+                                  <div key={idx} className="mt-5 mb-1">
+                                    <span className="inline-block font-mono text-[10px] font-bold tracking-widest text-[#10B981] border border-[#10B981]/30 bg-[#10B981]/5 px-2 py-0.5">
+                                      {trimmed}
+                                    </span>
+                                  </div>
+                                );
+                              }
+                              // Empty line — spacer
+                              if (trimmed === "") {
+                                return <div key={idx} className="h-3" />;
+                              }
+                              // Normal spoken copy
+                              return (
+                                <p key={idx} className="mb-0 leading-relaxed">{line}</p>
+                              );
+                            });
+                          }
+                          // Non-YouTube: render plain
+                          return <span>{raw}</span>;
+                        })()}
+                        {isBusy && (
+                          <span className="inline-block w-2 h-4 ml-1 bg-[#10B981] animate-blink align-middle"></span>
+                        )}
                       </div>
                     ) : (
-                      <div className="flex items-center gap-1.5">
-                        <span>COPY DATA</span>
+                      <div className="flex flex-col items-center justify-center h-40 space-y-4 opacity-80">
+                        <div className="w-48 h-1 bg-[#080809] border border-white/10 rounded-none overflow-hidden relative">
+                          <div
+                            className="absolute top-0 left-0 h-full bg-[#10B981] transition-all duration-300 ease-out"
+                            style={{ width: `${Math.round(scriptProgress)}%` }}
+                          ></div>
+                        </div>
+                        <p className="text-[10px] font-mono text-[#10B981] tracking-widest uppercase">COMPUTING SCRIPT... {Math.round(scriptProgress)}%</p>
+                        <p className="text-[9px] font-mono text-slate-500 mt-3 font-bold tracking-widest uppercase text-center">
+                          {helperMessages[helperMessageIndex]?.toUpperCase() || "INITIALIZING..."}
+                        </p>
                       </div>
                     )}
-                  </Button>
+                  </div>
                 </div>
               </div>
-              <div className="p-6 pt-14 whitespace-pre-wrap max-h-[500px] overflow-auto">
-                {generatedScript || analysisResult?.suggested_script || analysisResult?.suggestedScript ? (
-                  <div className="font-mono text-sm leading-relaxed text-slate-200">
-                    {generatedScript || analysisResult?.suggested_script || analysisResult?.suggestedScript}
-                    {isBusy && (
-                      <span className="inline-block w-2 h-4 ml-1 bg-[#10B981] animate-blink align-middle"></span>
-                    )}
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center h-40 space-y-4 opacity-80">
-                    <div className="w-48 h-1 bg-[#080809] border border-white/10 rounded-none overflow-hidden relative">
-                      <div
-                        className="absolute top-0 left-0 h-full bg-[#10B981] transition-all duration-300 ease-out"
-                        style={{ width: `${Math.round(scriptProgress)}%` }}
-                      ></div>
+
+              {/* Right Column: Refinement Sidebar */}
+              <div className="w-full lg:w-64 flex flex-col gap-4 flex-shrink-0">
+                {/* Platform Selector Card */}
+                <div className="bg-[#111827]/60 border border-white/10 p-4 flex flex-col gap-3">
+                  <span className="font-mono text-[9px] uppercase tracking-widest font-bold text-slate-500">Refinement Options</span>
+                  <div className="flex flex-col gap-2">
+                    <label className="font-mono text-[8px] uppercase tracking-widest text-slate-500 font-bold">Platform</label>
+                    <div className="relative group w-full">
+                      <select
+                        value={selectedPlatform || contentTarget}
+                        onChange={(e) => handleRegenerateScript(e.target.value)}
+                        disabled={isBusy}
+                        className="w-full appearance-none bg-[#080809] border border-white/20 rounded-none py-2 pl-3 pr-10 font-mono text-xs font-bold tracking-widest uppercase text-white focus:outline-none focus:border-[#10B981] hover:border-white/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                      >
+                        <option value="youtube">YOUTUBE</option>
+                        <option value="blog">BLOG</option>
+                        <option value="linkedin">LINKEDIN — POST</option>
+                        <option value="linkedin_carousel">LINKEDIN CAROUSEL</option>
+                        <option value="x">X — SINGLE POST</option>
+                        <option value="x_thread">X — THREAD</option>
+                        <option value="email_newsletter">NEWSLETTER</option>
+                      </select>
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 group-hover:text-white transition-colors">
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                      </div>
                     </div>
-                    <p className="text-[10px] font-mono text-[#10B981] tracking-widest uppercase">COMPUTING SCRIPT... {Math.round(scriptProgress)}%</p>
-                    <p className="text-[9px] font-mono text-slate-500 mt-3 font-bold tracking-widest uppercase text-center">
-                      {helperMessages[helperMessageIndex]?.toUpperCase() || "INITIALIZING..."}
-                    </p>
+                  </div>
+                </div>
+
+                {/* Pro Settings (only for Pro users) */}
+                {userPlan === "pro" && (
+                  <div className="bg-[#111827] border border-amber-500/20 p-4 flex flex-col gap-4 shadow-[0_0_15px_rgba(245,158,11,0.02)]">
+                    <span className="font-mono text-[9px] uppercase tracking-widest font-bold text-amber-500 flex items-center gap-1.5">
+                      <svg className="w-3 h-3 fill-current" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v6.5h4.5a1 1 0 01.82 1.573l-7 10A1 1 0 018.5 19v-6.5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.381z" clipRule="evenodd" />
+                      </svg>
+                      Pro Settings
+                    </span>
+                    
+                    {/* Tone Slider */}
+                    <div className="flex flex-col gap-1.5">
+                      <div className="flex items-center justify-between font-mono text-[8px] uppercase tracking-widest text-slate-400 font-bold select-none">
+                        <span>Tone</span>
+                        <span className="text-amber-500 font-bold">{proToneValue}%</span>
+                      </div>
+                      <input 
+                        type="range" 
+                        min="0" 
+                        max="100" 
+                        value={proToneValue} 
+                        onChange={(e) => setProToneValue(e.target.value)}
+                        className="w-full h-1 bg-[#080809] appearance-none cursor-pointer accent-amber-500" 
+                      />
+                      <div className="flex justify-between font-mono text-[7px] text-slate-500 select-none">
+                        <span>Creative</span>
+                        <span>Analytical</span>
+                      </div>
+                    </div>
+
+                    {/* Detail Depth Slider */}
+                    <div className="flex flex-col gap-1.5">
+                      <div className="flex items-center justify-between font-mono text-[8px] uppercase tracking-widest text-slate-400 font-bold select-none">
+                        <span>Detail Depth</span>
+                        <span className="text-amber-500 font-bold">{proDepthValue}%</span>
+                      </div>
+                      <input 
+                        type="range" 
+                        min="0" 
+                        max="100" 
+                        value={proDepthValue} 
+                        onChange={(e) => setProDepthValue(e.target.value)}
+                        className="w-full h-1 bg-[#080809] appearance-none cursor-pointer accent-amber-500" 
+                      />
+                      <div className="flex justify-between font-mono text-[7px] text-slate-500 select-none">
+                        <span>Concise</span>
+                        <span>Exhaustive</span>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>

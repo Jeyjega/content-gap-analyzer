@@ -191,6 +191,17 @@ YOUTUBE:
    Structure: Hook → Stakes → Core Content (gaps woven in) → Proof or Example → Call to Action.
    Voice: Sounds like a person speaking. Contractions throughout. Vary sentence length.
           No bullet points in the script body.
+   Visual Cues: For every new section, output this exact two-line header sequence:
+          Line 1 — the section timestamp on its own line: [MM:SS]
+          Line 2 — the visual cue on its own line: [Visual Cue: one sentence describing ideal stock footage or a simple animation]
+          Line 3 onwards — spoken copy for that section.
+          NEVER merge the timestamp and cue onto one line. NEVER omit the timestamp.
+          The visual cue is a production note for the editor — it is NOT spoken aloud.
+          Do NOT add visual cues mid-paragraph. One timestamp + one cue per section only.
+          Example sequence:
+          [00:42]
+          [Visual Cue: Close-up of a hand placing the last piece of a jigsaw puzzle]
+          And that's the moment everything clicked for me...
 
 BLOG:
    Format: Written article. Structured for reading on screen.
@@ -343,6 +354,16 @@ export default async function handler(req, res) {
 
     if (!analysis) return res.status(404).json({ error: "Analysis not found" });
 
+    // Check if user is on Pro plan
+    const { data: sub } = await supabase
+      .from("subscriptions")
+      .select("plan")
+      .eq("user_id", user.id)
+      .in("status", ["active", "trialing"])
+      .maybeSingle();
+    const userPlan = sub?.plan ? sub.plan.toLowerCase() : "free";
+    const isPro = userPlan === "pro";
+
     const targetPlatform = req.body.targetPlatform || analysis.metadata?.content_target || "youtube";
     const isRegenerate = req.body.regenerateScript === true;
     const currentPlatform = analysis.metadata?.content_target || "youtube";
@@ -362,23 +383,36 @@ export default async function handler(req, res) {
                     : rawInputType === "blog"    ? "blog"
                     : "text";
 
-    // calculateCreditCost: text = wc/1000, blog = wc/1000*1.2, youtube = wc/1000*1.5
-    // Rounded up to nearest 0.5 — identical to the UI estimate shown to the user.
-    const creditCost = Math.max(calculateCreditCost(wordCount, inputType), 0.5);
+    // Anchor the Cost: Determine the original base analysis cost
+    let baseAnalysisCost = analysis.metadata?.base_analysis_cost;
+    if (!baseAnalysisCost) {
+      // Calculate dynamic base cost based on word count and input type if not already stored
+      const calculatedCost = Math.max(calculateCreditCost(wordCount, inputType), 0.5);
+      baseAnalysisCost = Math.round(calculatedCost * 100) / 100;
+    } else {
+      baseAnalysisCost = Math.round(Number(baseAnalysisCost) * 100) / 100;
+    }
 
-    console.log(`[generate-script] creditCost=${creditCost} (wordCount=${wordCount}, inputType=${inputType}, isRegenerate=${isRegenerate})`);
+    // Enforce 50% rule for refinements
+    const refinementCost = Math.round((baseAnalysisCost * 0.5) * 100) / 100;
+    const creditCost = isRegenerate ? refinementCost : baseAnalysisCost;
 
-    /* ENTITLEMENT CHECK (skip for same-platform regeneration) */
-    if (!isSamePlatformRegen) {
-      const { allowed, error: entitlementError, code, creditsRemaining } = await checkEntitlement(user.id, creditCost);
-      if (!allowed) {
-        console.warn(`Entitlement blocked for user ${user.id}: needs ${creditCost} credits, has ${creditsRemaining}`);
-        return res.status(403).json({ error: entitlementError, code, upgrade: true });
-      }
+    console.log("Base Analysis Cost:", baseAnalysisCost, "Refinement Cost:", refinementCost);
+    console.log(`[generate-script] creditCost=${creditCost} (isRegenerate=${isRegenerate})`);
+
+    /* ENTITLEMENT CHECK */
+    const { allowed, error: entitlementError, code, creditsRemaining } = await checkEntitlement(user.id, creditCost);
+    if (!allowed) {
+      console.warn(`Entitlement blocked for user ${user.id}: needs ${creditCost} credits, has ${creditsRemaining}`);
+      return res.status(403).json({ error: entitlementError, code, upgrade: true });
     }
 
     /* UPDATE METADATA */
-    const newMetadata = { ...analysis.metadata, content_target: targetPlatform };
+    const newMetadata = { 
+      ...analysis.metadata, 
+      content_target: targetPlatform,
+      base_analysis_cost: baseAnalysisCost
+    };
     await supabase.from("analyses").update({ metadata: newMetadata }).eq("id", aId);
 
     // Calculate the output length ceiling based on input script word count
@@ -453,6 +487,44 @@ Follow all platform output rules, gap resolution tiers, tone definitions, and ab
       systemPrompt += `\n\nUSER-PROVIDED FACTS FOR CRITICAL GAPS:\n${factsText}\n\nThe user has provided specific facts to resolve the critical gaps. You MUST use these exact facts when weaving the gap resolutions into the final script. Do not invent any facts; use only the provided data.`;
     }
 
+    /* VISUAL CUES — activated only for YouTube target platform */
+    if (targetPlatform === "youtube") {
+      systemPrompt += `\n\nVISUAL CUES ACTIVATED (YouTube target platform detected):\nYou MUST inject a [Visual Cue: ...] line at the start of every new section or significant topic shift, placed on its own line immediately before the spoken copy for that section begins. Each cue must be one sentence describing ideal stock footage or a simple animation (e.g., [Visual Cue: Close-up of hands typing rapidly on a keyboard with lines of code reflecting on glasses]). Do NOT place cues mid-paragraph. Do NOT repeat a cue within the same section. One cue per section, every section.`;
+    } else {
+      // Explicit suppression — prevents any bleed-through to non-video formats
+      systemPrompt += `\n\nVISUAL CUES SUPPRESSED: The target platform is not YouTube video. Do NOT inject any [Visual Cue: ...] lines anywhere in the output. The output must be strictly text-based with no production notes, no bracket annotations, and no editor directions of any kind.`;
+    }
+
+    // Apply Pro Settings overrides
+    if (isPro) {
+      const proTone = req.body.proTone !== undefined ? Number(req.body.proTone) : null;
+      const proDepth = req.body.proDepth !== undefined ? Number(req.body.proDepth) : null;
+
+      if (proTone !== null && !isNaN(proTone)) {
+        let toneInstruction = "";
+        if (proTone <= 35) {
+          toneInstruction = "Tone Customization: Maximize creativity, storytelling, rich imagery, and narrative metaphors. Do not be overly clinical or logical.";
+        } else if (proTone >= 65) {
+          toneInstruction = "Tone Customization: Maximize analytical rigor, structure, logical transitions, objective arguments, and evidence-forward language.";
+        } else {
+          toneInstruction = `Tone Customization: Maintain a balance between creative storytelling and logical, structured analysis (Target setting: ${proTone}% on a Creative-to-Analytical slider).`;
+        }
+        systemPrompt += `\n\n[PRO SETTINGS TONE OVERRIDE]\n${toneInstruction}`;
+      }
+
+      if (proDepth !== null && !isNaN(proDepth)) {
+        let depthInstruction = "";
+        if (proDepth <= 35) {
+          depthInstruction = "Depth Customization: Be extremely concise, punchy, and brief. Trim any redundant examples or unnecessary background explanation. Prioritize brevity.";
+        } else if (proDepth >= 65) {
+          depthInstruction = "Depth Customization: Provide exhaustive coverage. Unpack details, explain background contexts, elaborate on every key concept, and offer in-depth explanations.";
+        } else {
+          depthInstruction = `Depth Customization: Keep a balanced depth, being clear and informative without being overly wordy or overly terse (Target setting: ${proDepth}% on a Concise-to-Exhaustive slider).`;
+        }
+        systemPrompt += `\n\n[PRO SETTINGS DETAIL DEPTH OVERRIDE]\n${depthInstruction}`;
+      }
+    }
+
     /* ENGINE 2 — SINGLE-PASS GENERATION */
     const scriptResp = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
@@ -474,17 +546,17 @@ Follow all platform output rules, gap resolution tiers, tone definitions, and ab
     };
 
     const updatePayload = { generated_script: JSON.stringify(finalPayload) };
-    if (req.body.targetPlatform) {
-      updatePayload.metadata = { ...analysis.metadata, content_target: req.body.targetPlatform };
-    }
+    updatePayload.metadata = { 
+      ...analysis.metadata, 
+      content_target: req.body.targetPlatform || targetPlatform,
+      base_analysis_cost: baseAnalysisCost
+    };
 
     await supabase.from("analyses").update(updatePayload).eq("id", aId);
 
     /* Deduct credits only after successful generation (not on same-platform regeneration) */
-    if (!isRegenerate) {
-      await incrementUsage(user.id, creditCost);
-      console.log(`[generate-script] Deducted ${creditCost} credits for user ${user.id}`);
-    }
+    await incrementUsage(user.id, creditCost);
+    console.log(`[generate-script] Deducted ${creditCost} credits for user ${user.id}`);
 
     res.write(JSON.stringify({ status: "script_ready", script: renderedScript }) + "\n");
     res.end();

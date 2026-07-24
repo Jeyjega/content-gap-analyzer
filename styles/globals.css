@@ -214,3 +214,10 @@ nextjs-portal,
   visibility: hidden !important;
   pointer-events: none !important;
 }
+
+/* Pro Dashboard Theme Styles */
+.theme-pro .generation-area {
+  border-color: rgba(245, 158, 11, 0.45) !important;
+  box-shadow: 0 0 30px rgba(245, 158, 11, 0.12), inset 0 0 15px rgba(245, 158, 11, 0.04) !important;
+  transition: all 0.3s ease-in-out;
+}

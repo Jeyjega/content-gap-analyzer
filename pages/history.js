@@ -188,19 +188,6 @@ export default function HistoryPage() {
   return (
     <Layout bgClass="bg-[#080809]" headerVariant="dark">
       <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-16 relative">
-        {/* Right side architectural marker */}
-        <div className="absolute right-8 top-0 bottom-0 w-8 hidden xl:flex flex-col items-center pointer-events-none opacity-50 z-0">
-           <div className="h-full w-px border-r border-dashed border-[#10B981]/30"></div>
-           <div className="absolute top-[20%] text-[8px] font-mono text-[#10B981] tracking-[0.3em] opacity-60" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
-             ARCH_GRID_ACTIVE [8PX]
-           </div>
-           <div className="absolute top-[60%] text-[8px] font-mono text-slate-500 tracking-[0.3em]" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
-             HISTORY BUFFER OVERFLOW: CLEAR
-           </div>
-           <div className="absolute bottom-8 right-[-12px] text-[8px] font-mono text-slate-500 tracking-[0.3em]">
-             SECURE_SYNC_STATUS: 100%
-           </div>
-        </div>
 
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end mb-16 gap-8 animate-slide-up relative z-10">
           <div className="flex relative">

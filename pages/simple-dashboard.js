@@ -87,10 +87,10 @@ export default function Dashboard() {
                             >
                                 <h3 className="font-medium">{gap.title}</h3>
                                 <p className="text-sm text-gray-700 mt-1">
-                                    {gap.suggestion}
+                                    {gap.description || gap.suggestion}
                                 </p>
                                 <span className="text-xs text-gray-500 mt-2 inline-block">
-                                    Priority: {gap.priority}
+                                    Priority: {gap.severity || gap.priority}
                                 </span>
                             </div>
                         ))}
