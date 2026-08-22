@@ -37,15 +37,15 @@ export default async function handler(req, res) {
   };
 
   const productId = PRODUCT_IDS[tier] || PRODUCT_IDS[normalizedTier];
+  const targetReturnUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://gapgens.com'}/dashboard?session=success`;
 
   // 1. Session Creation Payload structure
-  const host = req.headers.host ? (req.headers.host.includes('localhost') ? `http://${req.headers.host}` : `https://${req.headers.host}`) : 'https://gapgens.com';
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || host;
-  const returnUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://gapgens.com'}/dashboard?session=success`;
-
   const sessionPayload = {
     product_id: productId,
-    return_url: `${process.env.NEXT_PUBLIC_APP_URL || 'https://gapgens.com'}/dashboard?session=success`,
+    return_url: targetReturnUrl,
+    redirect_url: targetReturnUrl,
+    success_url: targetReturnUrl,
+    auto_redirect: true,
     customer: {
       email: email || undefined,
     },
@@ -96,7 +96,10 @@ export default async function handler(req, res) {
 
   try {
     const url = new URL(rawCheckoutUrl);
-    url.searchParams.set("return_url", sessionPayload.return_url);
+    url.searchParams.set("return_url", targetReturnUrl);
+    url.searchParams.set("redirect_url", targetReturnUrl);
+    url.searchParams.set("success_url", targetReturnUrl);
+    url.searchParams.set("auto_redirect", "true");
     url.searchParams.set("tier", normalizedTier);
     url.searchParams.set("metadata[tier]", normalizedTier);
 
@@ -116,7 +119,7 @@ export default async function handler(req, res) {
     const checkoutUrl = url.toString();
     return res.status(200).json({
       checkoutUrl,
-      return_url: sessionPayload.return_url,
+      return_url: targetReturnUrl,
       metadata: sessionPayload.metadata,
     });
   } catch (err) {
