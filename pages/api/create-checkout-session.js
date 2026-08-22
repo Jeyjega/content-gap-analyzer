@@ -45,7 +45,7 @@ export default async function handler(req, res) {
 
   const sessionPayload = {
     product_id: productId,
-    return_url: returnUrl,
+    return_url: `${process.env.NEXT_PUBLIC_APP_URL || 'https://gapgens.com'}/dashboard?session=success`,
     customer: {
       email: email || undefined,
     },
