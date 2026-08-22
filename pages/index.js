@@ -36,20 +36,109 @@ export default function Home() {
             Now in Beta
           </div>
 
-          <h1 className="font-display text-5xl md:text-7xl lg:text-8xl font-bold tracking-tighter text-white mb-4 leading-[0.9]">
-            Logical Authority<br/>
-            <span className="text-[#10B981]">In One Click.</span>
+          <h1 className="font-display text-4xl sm:text-6xl lg:text-7xl font-bold tracking-tighter text-white mb-6 leading-[1.05] max-w-4xl">
+            Find what's missing. Fix it.<br className="hidden sm:inline" />
+            <span className="text-[#10B981]"> Ship it — everywhere.</span>
           </h1>
 
-          <p className="font-sans text-lg md:text-xl text-slate-400 max-w-2xl mb-8 tracking-tight">
-            Paste any script, video URL, or article. GapGens identifies every gap in your content and rewrites it — platform-ready, in your chosen tone, in seconds.
+          <p className="font-sans text-base sm:text-lg md:text-xl text-slate-400 max-w-3xl mb-8 tracking-tight leading-relaxed">
+            Paste a script, video URL, or article. GapGens finds the specific gaps making it unpersuasive — missing mechanisms, unproven claims, weak transitions — then rewrites it in your voice, fact-checked against your real numbers, for every platform.
           </p>
 
           <Link href="/dashboard">
-            <button className="bg-[#10B981] text-[#080809] font-bold font-mono text-sm tracking-[0.15em] px-10 py-4 uppercase shadow-[0_0_20px_rgba(16,185,129,0.2)] hover:shadow-[0_0_40px_rgba(16,185,129,0.4)] transition-all mb-20">
+            <button className="bg-[#10B981] text-[#080809] font-bold font-mono text-sm tracking-[0.15em] px-10 py-4 uppercase shadow-[0_0_20px_rgba(16,185,129,0.2)] hover:shadow-[0_0_40px_rgba(16,185,129,0.4)] transition-all mb-16">
               Start Free Audit
             </button>
           </Link>
+
+          {/* THE GAP TAXONOMY SECTION */}
+          <div className="w-full max-w-5xl my-16 text-left">
+            <div className="text-center mb-12">
+              <span className="font-mono text-[10px] text-[#10B981] uppercase tracking-[0.25em] mb-3 inline-block border border-[#10B981]/30 px-3 py-1 bg-[#10B981]/5">
+                THE GAP TAXONOMY
+              </span>
+              <h2 className="font-display text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight text-white mt-2">
+                Not all gaps are the same. We don&apos;t treat them like they are.
+              </h2>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8 relative">
+              {/* Card 1 — Mechanism Gap */}
+              <div className="bg-[#111827] border border-[#10B981]/20 p-6 md:p-7 relative flex flex-col justify-between group hover:border-[#10B981]/50 transition-all">
+                <div className="absolute -top-3 -left-3 w-6 h-6 bg-[#10B981] text-[#080809] flex items-center justify-center font-mono text-[10px] font-bold">01</div>
+                <div>
+                  <div className="font-mono text-[10px] text-[#10B981] tracking-widest uppercase mb-2">CAUSAL LOGIC</div>
+                  <h3 className="font-display text-xl font-bold text-white mb-3">Mechanism Gap</h3>
+                  <p className="font-sans text-xs text-[#10B981] font-semibold italic mb-4 leading-relaxed">
+                    &ldquo;You claim it worked. You never explain how.&rdquo;
+                  </p>
+                  <p className="font-sans text-sm text-slate-400 leading-relaxed">
+                    GapGens flags missing causal logic — the step between what you did and what happened.
+                  </p>
+                </div>
+              </div>
+
+              {/* Card 2 — Credibility Gap */}
+              <div className="bg-[#111827] border border-[#10B981]/20 p-6 md:p-7 relative flex flex-col justify-between group hover:border-[#10B981]/50 transition-all">
+                <div className="absolute -top-3 -left-3 w-6 h-6 bg-[#10B981] text-[#080809] flex items-center justify-center font-mono text-[10px] font-bold">02</div>
+                <div>
+                  <div className="font-mono text-[10px] text-[#10B981] tracking-widest uppercase mb-2">PROOF & DATA</div>
+                  <h3 className="font-display text-xl font-bold text-white mb-3">Credibility Gap</h3>
+                  <p className="font-sans text-xs text-[#10B981] font-semibold italic mb-4 leading-relaxed">
+                    &ldquo;You claim it worked. You never prove it.&rdquo;
+                  </p>
+                  <p className="font-sans text-sm text-slate-400 leading-relaxed">
+                    GapGens flags unverifiable claims — numbers, results, or outcomes stated without evidence.
+                  </p>
+                </div>
+              </div>
+
+              {/* Card 3 — Transition Gap */}
+              <div className="bg-[#111827] border border-[#10B981]/20 p-6 md:p-7 relative flex flex-col justify-between group hover:border-[#10B981]/50 transition-all">
+                <div className="absolute -top-3 -left-3 w-6 h-6 bg-[#10B981] text-[#080809] flex items-center justify-center font-mono text-[10px] font-bold">03</div>
+                <div>
+                  <div className="font-mono text-[10px] text-[#10B981] tracking-widest uppercase mb-2">FLOW & COHESION</div>
+                  <h3 className="font-display text-xl font-bold text-white mb-3">Transition Gap</h3>
+                  <p className="font-sans text-xs text-[#10B981] font-semibold italic mb-4 leading-relaxed">
+                    &ldquo;You claim it worked. You lost the thread getting there.&rdquo;
+                  </p>
+                  <p className="font-sans text-sm text-slate-400 leading-relaxed">
+                    GapGens flags logical jumps that leave the audience behind.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* NO INVENTED NUMBERS SECTION */}
+          <div className="w-full max-w-5xl my-16 text-left border-t border-b border-white/5 py-16">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-12 items-center">
+              
+              {/* Left Column: Copy */}
+              <div>
+                <span className="font-mono text-[10px] text-[#10B981] uppercase tracking-[0.25em] mb-4 inline-block border border-[#10B981]/30 px-3 py-1 bg-[#10B981]/5">
+                  NO INVENTED NUMBERS
+                </span>
+                <h2 className="font-display text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-white mb-6 leading-[1.15]">
+                  If GapGens needs a number, it asks you for it. It never makes one up.
+                </h2>
+                <p className="font-sans text-sm sm:text-base text-slate-400 leading-relaxed">
+                  Most AI writing tools will happily invent a statistic to fill a gap. GapGens doesn&apos;t. When a Credibility Gap needs a real number, timeframe, or result, GapGens stops and asks you for it before generating anything — then uses your exact figure, not a paraphrased approximation.
+                </p>
+              </div>
+
+              {/* Right Column: Screenshot */}
+              <div className="relative group overflow-hidden border border-[#10B981]/30 bg-[#080809] shadow-2xl">
+                <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-[#10B981] to-transparent opacity-80 z-10"></div>
+                <img
+                  src="/missing-facts-modal.png"
+                  alt="Missing Facts Modal - Add Your Authentic Details"
+                  className="w-full h-auto object-cover object-center transform group-hover:scale-[1.02] transition-transform duration-300"
+                />
+              </div>
+
+            </div>
+          </div>
 
           {/* GAP ANALYSIS WIDGET */}
           <div className="w-full max-w-4xl bg-[#111827]/80 backdrop-blur-xl border border-white/5 p-8 text-left grid grid-cols-1 md:grid-cols-[2fr_1fr] gap-8 relative mt-10">
@@ -76,6 +165,54 @@ export default function Home() {
               </div>
             </div>
 
+          </div>
+
+          {/* SHOOT-READY VISUAL DIRECTION SECTION */}
+          <div className="w-full max-w-5xl my-16 text-left border-b border-white/5 pb-16">
+            <div className="text-center max-w-3xl mx-auto mb-12">
+              <span className="font-mono text-[10px] text-[#10B981] uppercase tracking-[0.25em] mb-4 inline-block border border-[#10B981]/30 px-3 py-1 bg-[#10B981]/5">
+                SHOOT-READY, NOT JUST WRITTEN
+              </span>
+              <h2 className="font-display text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-white mb-6 leading-[1.15]">
+                Your YouTube script comes with visual direction built in.
+              </h2>
+              <p className="font-sans text-sm sm:text-base text-slate-400 leading-relaxed">
+                GapGens doesn&apos;t just fix your words — for YouTube scripts, it tells you what to film. Every output includes timestamped visual cues, so you know exactly what shot to use before you press record.
+              </p>
+            </div>
+
+            {/* Code-block / Terminal-Style Script Excerpt */}
+            <div className="max-w-3xl mx-auto bg-[#111827]/80 backdrop-blur-xl border border-white/10 p-6 md:p-8 relative shadow-2xl">
+              <div className="absolute top-0 left-0 w-1 h-full bg-[#10B981]"></div>
+              
+              <div className="bg-[#080809] border border-white/5 p-6 font-mono text-xs sm:text-sm text-slate-300 space-y-3">
+                <div className="flex items-center justify-between border-b border-dashed border-white/10 pb-3 mb-2">
+                  <span className="text-[#10B981] font-bold tracking-widest uppercase text-[10px]">SCRIPT EXCERPT // YOUTUBE FORMAT</span>
+                  <span className="text-slate-600 text-[10px]">[00:00]</span>
+                </div>
+                
+                <p className="text-[#10B981] leading-relaxed font-semibold">
+                  [00:00]
+                </p>
+                <p className="text-slate-400 italic leading-relaxed bg-[#111827]/60 border border-[#10B981]/20 p-3">
+                  [Visual Cue: Wide shot of an empty desk at dawn, a single lamp on, papers scattered &mdash; the quiet anxiety of a business that hasn&apos;t found its footing yet]
+                </p>
+                <p className="text-white leading-relaxed font-sans text-sm pt-2">
+                  &ldquo;The day I turned down a paying client was the day my business finally started working.&rdquo;
+                </p>
+              </div>
+
+              {/* Caption Tag & Short Caption Line */}
+              <div className="mt-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-4 border-t border-white/5">
+                <div className="font-mono text-[10px] text-slate-500 uppercase tracking-[0.2em] border border-white/10 px-3 py-1 bg-[#111827]/50 inline-block self-start sm:self-auto">
+                  YouTube scripts only
+                </div>
+                <div className="font-mono text-xs text-slate-400 tracking-widest uppercase flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 bg-[#10B981] rounded-none animate-pulse-soft"></span>
+                  Timestamped. Shot-specific. Ready for your editor.
+                </div>
+              </div>
+            </div>
           </div>
 
         </div>
@@ -106,7 +243,7 @@ export default function Home() {
                     <p className="leading-relaxed">"...it seems that the market direction is unclear but we might see growth in Q3 if the variables align with our internal models or..."</p>
                     <div className="text-[#0D9488] animate-pulse absolute bottom-5 left-5">_PROCESSING_CYPHER</div>
                   </div>
-                  <p className="mt-5 text-sm text-slate-300 font-sans">Paste a raw transcript, drop a YouTube URL, or link a blog post. GapGens accepts any format and extracts the full content automatically.</p>
+                  <p className="mt-5 text-sm text-slate-300 font-sans">Paste a transcript, drop a YouTube URL, or link a blog post. GapGens extracts the full content automatically — no formatting required.</p>
                </div>
    
                <div className="bg-[#111827] border border-white/5 p-8 shadow-xl relative z-10 w-full">
@@ -128,7 +265,7 @@ export default function Home() {
                      </div>
                    </div>
                  </div>
-                  <p className="mt-5 text-sm text-slate-300 font-sans">Every gap is identified, categorised by severity — Critical, Medium, or Minor — and described with exactly what is missing and why it matters.</p>
+                  <p className="mt-5 text-sm text-slate-300 font-sans">GapGens scans for Mechanism, Credibility, and Transition gaps, ranks each by severity, and tells you exactly what&apos;s missing and why it weakens the piece. If a Credibility Gap needs a real number, it asks you for it instead of guessing.</p>
                </div>
    
                <div className="bg-[#111827] border border-[#10B981]/20 p-8 shadow-xl relative shadow-[#10B981]/5 z-10 w-full">
@@ -145,7 +282,7 @@ export default function Home() {
                       <p className="font-sans text-xs text-white leading-relaxed">"I stopped taking every client and committed to one specific type. The income didn&apos;t creep — it moved quickly once that focus was locked in."</p>
                     </div>
                   </div>
-                  <p className="mt-5 text-sm text-slate-300 font-sans">Derivative scripts generated in your chosen voice using the <span className="text-[#10B981] font-semibold">Custom Tone Selector</span> — Conversational, Authoritative, Storytelling, and more.</p>
+                  <p className="mt-5 text-sm text-slate-300 font-sans">Get a rewritten, platform-ready version in your chosen tone — Conversational, Authoritative, Storytelling, and more — with your real data intact, not paraphrased.</p>
                </div>
    
              </div>
@@ -157,8 +294,13 @@ export default function Home() {
       {/* GLOBAL INFLUENCE */}
       <section className="py-32 relative border-t border-dashed border-white/10 bg-[#080809] overflow-hidden">
         <ScrollReveal>
-          <div className="text-center mb-24">
-            <h2 className="font-display text-4xl font-bold text-white tracking-tighter uppercase">Works Across Every Platform</h2>
+          <div className="text-center mb-16 max-w-3xl mx-auto px-4">
+            <h2 className="font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-white tracking-tighter mb-4">
+              One analysis. Every platform, your voice.
+            </h2>
+            <p className="font-sans text-base sm:text-lg text-slate-400 leading-relaxed">
+              YouTube &middot; LinkedIn &middot; X &middot; Blog &mdash; GapGens generates platform-native derivatives from a single audit, each matched to your chosen tone. YouTube scripts also include shot-by-shot visual direction.
+            </p>
           </div>
           
           <div className="relative w-full max-w-4xl mx-auto h-[350px] md:h-[400px] flex items-center justify-center">
@@ -211,9 +353,31 @@ export default function Home() {
             
           </div>
           <p className="text-center font-sans text-sm text-slate-500 mt-10">
-            YouTube · LinkedIn · X · Instagram · Blog — one analysis, every format, your chosen tone.
+            YouTube &middot; LinkedIn &middot; X &middot; Blog &mdash; one analysis, every format, your chosen tone.
           </p>
         </ScrollReveal>
+      </section>
+
+      {/* COMPACT PRICING BAND */}
+      <section className="py-10 bg-[#080809] border-t border-dashed border-white/10 relative">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 py-4 px-6 sm:px-8 bg-[#111827]/60 border border-white/10">
+            <div className="text-center sm:text-left">
+              <h3 className="font-display text-lg sm:text-xl font-bold text-white tracking-tight">
+                Start free. Scale when you&apos;re ready.
+              </h3>
+              <p className="font-sans text-xs sm:text-sm text-slate-400 mt-1">
+                First audit is free, no account required.
+              </p>
+            </div>
+            <Link
+              href="/pricing"
+              className="font-mono text-xs font-bold text-[#10B981] uppercase tracking-widest hover:text-emerald-300 transition-colors flex items-center gap-1.5 flex-shrink-0"
+            >
+              See pricing &rarr;
+            </Link>
+          </div>
+        </div>
       </section>
 
       {/* FINAL CTA */}
