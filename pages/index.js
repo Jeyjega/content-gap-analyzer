@@ -161,15 +161,15 @@ export default function Home() {
             <h2 className="font-display text-4xl font-bold text-white tracking-tighter uppercase">Works Across Every Platform</h2>
           </div>
           
-          <div className="relative w-full max-w-4xl mx-auto h-[400px] flex items-center justify-center">
+          <div className="relative w-full max-w-4xl mx-auto h-[350px] md:h-[400px] flex items-center justify-center">
             {/* Grid background */}
             <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-5"></div>
             
             {/* Center Node */}
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20">
-               <div className="w-40 h-40 bg-[#111827] border-[2px] border-[#10B981] shadow-[0_0_40px_rgba(16,185,129,0.15)] flex items-center justify-center font-display font-bold text-2xl tracking-widest text-white relative">
+               <div className="w-28 h-28 md:w-40 md:h-40 bg-[#111827] border-[2px] border-[#10B981] shadow-[0_0_40px_rgba(16,185,129,0.15)] flex items-center justify-center font-display font-bold text-base md:text-2xl tracking-widest text-white relative">
                  GAPGENS
-                 <div className="absolute -bottom-6 font-mono text-[10px] text-[#10B981] tracking-[0.2em]">CORE_HUB</div>
+                 <div className="absolute -bottom-4 md:-bottom-6 font-mono text-[8px] md:text-[10px] text-[#10B981] tracking-[0.2em]">CORE_HUB</div>
                </div>
             </div>
 
@@ -178,34 +178,34 @@ export default function Home() {
             <div className="absolute top-0 bottom-0 left-1/2 w-[1px] border-l border-dashed border-white/10 z-10 -translate-x-1/2"></div>
             
             {/* Top Node */}
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-3">
-              <div className="w-14 h-14 bg-[#080809] border border-[#10B981]/50 flex items-center justify-center shadow-[0_0_20px_rgba(16,185,129,0.05)]">
-                 <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/></svg>
+            <div className="absolute top-1 sm:top-4 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-1.5 md:gap-3">
+              <div className="w-10 h-10 md:w-14 md:h-14 bg-[#080809] border border-[#10B981]/50 flex items-center justify-center shadow-[0_0_20px_rgba(16,185,129,0.05)]">
+                 <svg className="w-4 h-4 md:w-6 md:h-6 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/></svg>
               </div>
-              <span className="font-mono text-[10px] text-[#10B981] tracking-[0.2em]">LINKEDIN</span>
+              <span className="font-mono text-[8px] md:text-[10px] text-[#10B981] tracking-[0.2em]">LINKEDIN</span>
             </div>
 
             {/* Bottom Node */}
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-3">
-              <span className="font-mono text-[10px] text-[#10B981] tracking-[0.2em]">BLOG / WEB</span>
-              <div className="w-14 h-14 bg-[#080809] border border-white/20 flex items-center justify-center">
-                 <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" /></svg>
+            <div className="absolute bottom-1 sm:bottom-4 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-1.5 md:gap-3">
+              <span className="font-mono text-[8px] md:text-[10px] text-[#10B981] tracking-[0.2em]">BLOG / WEB</span>
+              <div className="w-10 h-10 md:w-14 md:h-14 bg-[#080809] border border-white/20 flex items-center justify-center">
+                 <svg className="w-4 h-4 md:w-6 md:h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" /></svg>
               </div>
             </div>
 
             {/* Left Node */}
-            <div className="absolute top-1/2 left-8 -translate-y-1/2 z-20 flex items-center gap-4">
-              <div className="w-14 h-14 bg-[#080809] border border-white/20 flex items-center justify-center">
-                 <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.985 0-.21 0-.42-.015-.63A9.935 9.935 0 0024 4.59z"/></svg>
+            <div className="absolute top-1/2 left-1 sm:left-8 -translate-y-1/2 z-20 flex items-center gap-2 md:gap-4">
+              <div className="w-10 h-10 md:w-14 md:h-14 bg-[#080809] border border-white/20 flex items-center justify-center">
+                 <svg className="w-3.5 h-3.5 md:w-5 md:h-5 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.985 0-.21 0-.42-.015-.63A9.935 9.935 0 0024 4.59z"/></svg>
               </div>
-              <span className="font-mono text-[10px] text-[#10B981] tracking-[0.2em] -ml-2">TWITTER</span>
+              <span className="font-mono text-[8px] md:text-[10px] text-[#10B981] tracking-[0.2em] -ml-1 md:-ml-2">TWITTER</span>
             </div>
 
             {/* Right Node */}
-            <div className="absolute top-1/2 right-8 -translate-y-1/2 z-20 flex items-center gap-4">
-              <span className="font-mono text-[10px] text-[#10B981] tracking-[0.2em] -mr-2">YOUTUBE</span>
-              <div className="w-14 h-14 bg-[#080809] border border-white/20 flex items-center justify-center">
-                 <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 00-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 00.502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 002.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 002.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+            <div className="absolute top-1/2 right-1 sm:right-8 -translate-y-1/2 z-20 flex items-center gap-2 md:gap-4">
+              <span className="font-mono text-[8px] md:text-[10px] text-[#10B981] tracking-[0.2em] -mr-1 md:-mr-2">YOUTUBE</span>
+              <div className="w-10 h-10 md:w-14 md:h-14 bg-[#080809] border border-white/20 flex items-center justify-center">
+                 <svg className="w-4 h-4 md:w-6 md:h-6 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 00-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 00.502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 002.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 002.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
               </div>
             </div>
             

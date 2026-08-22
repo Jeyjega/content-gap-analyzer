@@ -126,7 +126,7 @@ function ProStats({ user }) {
   }
 
   return (
-    <div className="bg-[#111827]/80 border border-amber-500/30 p-6 shadow-[0_0_15px_rgba(245,158,11,0.05)] grid grid-cols-2 gap-4">
+    <div className="bg-[#111827]/80 border border-amber-500/30 p-6 shadow-[0_0_15px_rgba(245,158,11,0.05)] grid grid-cols-1 sm:grid-cols-2 gap-4">
       <div>
         <div className="font-mono text-[9px] text-amber-500/70 uppercase tracking-widest mb-1">Total Scripts Generated</div>
         <div className="text-2xl font-bold font-display text-white">{stats.totalScripts}</div>
@@ -203,12 +203,29 @@ export default function Dashboard() {
     return Math.ceil(raw / 0.5) * 0.5;
   };
 
-  // Fetch usage and plan
+  // Fetch usage and plan with instant post-checkout sync
   useEffect(() => {
     if (!user) return;
+    const isSuccessSession = router.query?.session === 'success';
 
     async function fetchEntitlements() {
-      // 1. Get Plan
+      if (isSuccessSession) {
+        try {
+          await fetch('/api/auth/sync-subscription', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              user_id: user.id,
+              email: user.email,
+              tier: router.query?.tier || 'pro'
+            })
+          });
+        } catch (err) {
+          console.error("Instant subscription sync error:", err);
+        }
+      }
+
+      // 1. Get Plan directly from subscriptions table
       const { data: sub } = await supabase
         .from("subscriptions")
         .select("plan, status")
@@ -219,14 +236,14 @@ export default function Dashboard() {
       const plan = sub?.plan?.toLowerCase() || "free";
       setUserPlan(plan);
 
-      // 2. Get Usage
+      // 2. Get Usage & Credits
       const { data: usageData } = await supabase
         .from("freemium_usage")
         .select("analyses_used, reset_at")
         .eq("user_id", user.id)
         .maybeSingle();
 
-      const planCredits = plan === "pro" ? 150 : plan === "standard" ? 30 : 3;
+      const planCredits = plan === "pro" ? 500 : plan === "standard" ? 150 : 3;
       let creditsUsed = parseFloat(usageData?.analyses_used) || 0;
       const resetAt = usageData?.reset_at ? new Date(usageData.reset_at) : new Date(0);
 
@@ -242,7 +259,7 @@ export default function Dashboard() {
     }
 
     fetchEntitlements();
-  }, [user, analysisResult, generatedScript]); // Refresh when analysis completes
+  }, [user, router.query, analysisResult, generatedScript]); // Refresh when analysis completes
 
   // Dynamic credit estimate
   useEffect(() => {
@@ -1261,7 +1278,7 @@ export default function Dashboard() {
                       )}
                     </div>
 
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-0 w-full border border-white/10 p-1 bg-[#080809]">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-0 w-full border border-white/10 p-1 bg-[#080809]">
                       {[
                         {
                           id: "youtube",
@@ -1342,7 +1359,7 @@ export default function Dashboard() {
                                       <path d={platform.icon} />
                                     </svg>
                                   </div>
-                                  <span className={`text-[11px] font-mono font-bold whitespace-nowrap tracking-wider ${isLocked ? "text-slate-500" :
+                                  <span className={`text-[11px] font-mono font-bold sm:whitespace-nowrap whitespace-normal tracking-wider ${isLocked ? "text-slate-500" :
                                     isActive ? "text-[#10B981]" : "text-slate-200"
                                     }`}>
                                     {platform.label} {isLocked && "🔒"}
@@ -1483,7 +1500,7 @@ export default function Dashboard() {
               <div className="flex items-start justify-between mb-8 pb-4 border-b border-dashed border-white/10">
                 <div>
                   <div className="font-mono text-[10px] text-slate-500 uppercase tracking-widest mb-2">OUTPUT LOG</div>
-                  <h2 className="text-2xl font-display font-bold text-white tracking-tighter uppercase italic">Intelligence Engine</h2>
+                  <h2 className="text-xl sm:text-2xl font-display font-bold text-white tracking-tighter uppercase italic">Intelligence Engine</h2>
                 </div>
                 <div className="flex gap-3 text-sm">
                   <div className={`px-3 py-1 border flex items-center gap-2 font-mono text-[10px] uppercase tracking-widest ${status === 'done' ? 'bg-[#10B981]/10 text-[#10B981] border-[#10B981]' : 'bg-[#080809] text-slate-500 border-white/10'
@@ -1626,12 +1643,12 @@ export default function Dashboard() {
               {/* Left Column: Script Output */}
               <div className="flex-grow min-w-0">
                 <div className="bg-[#080809] border border-white/10 shadow-inner relative overflow-hidden min-h-[200px]">
-                  <div className="absolute top-0 left-0 right-0 h-10 bg-[#080809] z-10 flex items-center px-4 justify-between border-b border-dashed border-white/10">
-                    <span className="font-mono text-[9px] uppercase tracking-widest font-bold text-slate-500">AI-GENERATED OUTPUT</span>
-                    <div className="flex items-center gap-2">
+                  <div className="absolute top-0 left-0 right-0 h-auto sm:h-10 bg-[#080809] z-10 flex flex-col sm:flex-row items-center justify-between py-2 sm:py-0 px-4 border-b border-dashed border-white/10 gap-2">
+                    <span className="font-mono text-[9px] uppercase tracking-widest font-bold text-slate-500 w-full sm:w-auto text-center sm:text-left">AI-GENERATED OUTPUT</span>
+                    <div className="flex flex-wrap items-center justify-center sm:justify-end gap-2 w-full sm:w-auto">
                       {/* Hide Visual Cues Toggle — only shown for YouTube target platform */}
                       {targetPlatform === "youtube" && (generatedScript || analysisResult?.suggested_script) && (
-                        <label className="flex items-center gap-1.5 cursor-pointer group">
+                        <label className="flex items-center justify-center gap-1.5 cursor-pointer group">
                           <input
                             type="checkbox"
                             id="hide-visual-cues-toggle"
@@ -1668,15 +1685,17 @@ export default function Dashboard() {
                                 {isRegenerate ? (
                                   hasInsufficientCredits ? (
                                     <>
-                                      <span>Insufficient Credits</span>
-                                      <span className="text-[7.5px] text-red-400/60 font-mono tracking-normal normal-case font-medium">
+                                      <span className="hidden sm:inline">Insufficient Credits</span>
+                                      <span className="sm:hidden text-red-400">NO CREDITS</span>
+                                      <span className="hidden md:inline text-[7.5px] text-red-400/60 font-mono tracking-normal normal-case font-medium">
                                         (Need {cost})
                                       </span>
                                     </>
                                   ) : (
                                     <>
-                                      <span>Regenerate Script</span>
-                                      <span className="text-[7.5px] text-slate-500 font-mono tracking-normal normal-case font-medium">
+                                      <span className="hidden sm:inline">Regenerate Script</span>
+                                      <span className="sm:hidden">REGENERATE</span>
+                                      <span className="hidden md:inline text-[7.5px] text-slate-500 font-mono tracking-normal normal-case font-medium">
                                         (Costs {cost} Credits)
                                       </span>
                                     </>
@@ -1717,7 +1736,10 @@ export default function Dashboard() {
                               <span>COPIED</span>
                             </div>
                           ) : (
-                            <span>COPY SPOKEN</span>
+                            <>
+                              <span className="hidden sm:inline">COPY SPOKEN</span>
+                              <span className="sm:hidden">SPOKEN</span>
+                            </>
                           )}
                         </Button>
                       )}
@@ -1742,7 +1764,10 @@ export default function Dashboard() {
                               <span>COPIED</span>
                             </div>
                           ) : (
-                            <span>COPY STORYBOARD</span>
+                            <>
+                              <span className="hidden sm:inline">COPY STORYBOARD</span>
+                              <span className="sm:hidden">STORYBOARD</span>
+                            </>
                           )}
                         </Button>
                       )}
@@ -1766,15 +1791,16 @@ export default function Dashboard() {
                           </div>
                         ) : (
                           <div className="flex items-center gap-1.5">
-                            <span>COPY ALL</span>
+                            <span className="hidden sm:inline">COPY ALL</span>
+                            <span className="sm:hidden">ALL</span>
                           </div>
                         )}
                       </Button>
                     </div>
                   </div>
-                  <div className="p-6 pt-14 whitespace-pre-wrap max-h-[500px] overflow-auto">
+                  <div className="p-6 pt-28 sm:pt-14 whitespace-pre-wrap max-h-[500px] overflow-auto">
                     {generatedScript || analysisResult?.suggested_script || analysisResult?.suggestedScript ? (
-                      <div className="font-mono text-sm leading-relaxed text-slate-200">
+                      <div className="font-mono text-xs sm:text-sm md:text-base leading-relaxed text-slate-200 break-words whitespace-pre-wrap">
                         {(() => {
                           const raw = generatedScript || analysisResult?.suggested_script || analysisResult?.suggestedScript || "";
                           const isYouTube = targetPlatform === "youtube";
@@ -1880,7 +1906,7 @@ export default function Dashboard() {
                     
                     {/* Tone Slider */}
                     <div className="flex flex-col gap-1.5">
-                      <div className="flex items-center justify-between font-mono text-[8px] uppercase tracking-widest text-slate-400 font-bold select-none">
+                      <div className="flex items-center justify-between font-mono text-[8px] uppercase tracking-widest text-slate-400 font-bold select-none pro-setting-header">
                         <span>Tone</span>
                         <span className="text-amber-500 font-bold">{proToneValue}%</span>
                       </div>
@@ -1900,7 +1926,7 @@ export default function Dashboard() {
 
                     {/* Detail Depth Slider */}
                     <div className="flex flex-col gap-1.5">
-                      <div className="flex items-center justify-between font-mono text-[8px] uppercase tracking-widest text-slate-400 font-bold select-none">
+                      <div className="flex items-center justify-between font-mono text-[8px] uppercase tracking-widest text-slate-400 font-bold select-none pro-setting-header">
                         <span>Detail Depth</span>
                         <span className="text-amber-500 font-bold">{proDepthValue}%</span>
                       </div>

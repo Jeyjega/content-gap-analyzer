@@ -9,6 +9,7 @@ import Footer from '@/components/Footer';
 export default function Layout({ children, bgClass = "bg-slate-50", headerVariant = "light" }) {
     const router = useRouter();
     const [scrolled, setScrolled] = useState(false);
+    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const { user, loading } = useAuth();
 
     useEffect(() => {
@@ -16,6 +17,10 @@ export default function Layout({ children, bgClass = "bg-slate-50", headerVarian
         window.addEventListener('scroll', handleScroll);
         return () => window.removeEventListener('scroll', handleScroll);
     }, []);
+
+    useEffect(() => {
+        setMobileMenuOpen(false);
+    }, [router.pathname]);
 
     const isActive = (path) => router.pathname === path;
 
@@ -65,8 +70,61 @@ export default function Layout({ children, bgClass = "bg-slate-50", headerVarian
                                 </Link>
                             )
                         )}
+
+                        {/* Mobile Menu Toggle Button */}
+                        <button
+                            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                            className="md:hidden text-slate-400 hover:text-white focus:outline-none p-1.5 cursor-pointer flex items-center justify-center"
+                            aria-label="Toggle navigation menu"
+                        >
+                            {mobileMenuOpen ? (
+                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            ) : (
+                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                                </svg>
+                            )}
+                        </button>
                     </div>
                 </div>
+
+                {/* Mobile Menu Dropdown */}
+                {mobileMenuOpen && (
+                    <div className="md:hidden bg-[#080809]/95 backdrop-blur-xl border-b border-white/5 px-4 pt-2 pb-4 space-y-1.5 flex flex-col z-40 w-full animate-fade-in">
+                        <Link
+                            href="/"
+                            className={`px-3 py-2 font-mono text-xs tracking-widest uppercase hover:text-white transition-colors ${isActive('/') ? 'text-[#10B981] font-bold' : 'text-slate-400'}`}
+                            onClick={() => setMobileMenuOpen(false)}
+                        >
+                            HOME
+                        </Link>
+                        <Link
+                            href="/dashboard"
+                            className={`px-3 py-2 font-mono text-xs tracking-widest uppercase hover:text-white transition-colors ${isActive('/dashboard') ? 'text-[#10B981] font-bold' : 'text-slate-400'}`}
+                            onClick={() => setMobileMenuOpen(false)}
+                        >
+                            DASHBOARD
+                        </Link>
+                        <Link
+                            href="/history"
+                            className={`px-3 py-2 font-mono text-xs tracking-widest uppercase hover:text-white transition-colors ${isActive('/history') ? 'text-[#10B981] font-bold' : 'text-slate-400'}`}
+                            onClick={() => setMobileMenuOpen(false)}
+                        >
+                            HISTORY
+                        </Link>
+                        {!loading && !user && (
+                            <Link
+                                href="/login"
+                                className="px-3 py-2 font-mono text-xs tracking-widest uppercase text-[#10B981] hover:bg-[#10B981]/10 transition-colors"
+                                onClick={() => setMobileMenuOpen(false)}
+                            >
+                                EXECUTE STRATEGY
+                            </Link>
+                        )}
+                    </div>
+                )}
             </header>
 
             <main className="flex-grow pt-16">

@@ -30,6 +30,8 @@
 
 html {
   scroll-behavior: smooth;
+  overflow-x: hidden;
+  max-width: 100vw;
 }
 
 @keyframes fadeIn {
@@ -171,6 +173,8 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+  max-width: 100vw;
 }
 
 button {
@@ -220,4 +224,56 @@ nextjs-portal,
   border-color: rgba(245, 158, 11, 0.45) !important;
   box-shadow: 0 0 30px rgba(245, 158, 11, 0.12), inset 0 0 15px rgba(245, 158, 11, 0.04) !important;
   transition: all 0.3s ease-in-out;
+}
+
+/* Premium Responsive Slider Thumb Styles & Stacking */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 0px;
+  background: #f59e0b; /* amber-500 */
+  cursor: pointer;
+  transition: transform 0.1s ease-in-out;
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 0px;
+  background: #f59e0b;
+  cursor: pointer;
+  border: none;
+}
+
+@media (max-width: 768px) {
+  /* Stack range input details/labels vertically when cramped */
+  .pro-setting-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 4px !important;
+  }
+  
+  /* Large touch targets on mobile */
+  input[type="range"] {
+    height: 8px !important; /* Slightly thicker track on mobile */
+  }
+
+  input[type="range"]::-webkit-slider-thumb {
+    width: 22px !important;
+    height: 22px !important;
+    border-radius: 50% !important; /* Circular for touch-friendly appearance on mobile */
+  }
+
+  input[type="range"]::-moz-range-thumb {
+    width: 22px !important;
+    height: 22px !important;
+    border-radius: 50% !important;
+  }
 }
