@@ -23,22 +23,46 @@ export default async function handler(req, res) {
 
     const customerEmail = rawEmail ? rawEmail.toLowerCase().trim() : null;
 
-    // 3. Extract Tier & Product ID
-    const rawTier = (
+    // 3. Product ID & Plan Mapping
+    const productId =
+      data.product_id ||
+      payload.product_id ||
+      "";
+
+    const rawPlan = (
       data.metadata?.tier ||
       payload.metadata?.tier ||
       data.tier ||
       payload.tier ||
       data.plan ||
-      "pro"
+      data.product_name ||
+      data.product?.name ||
+      ""
     ).toLowerCase().trim();
 
-    const tier = rawTier.includes("pro") ? "pro" : "standard";
-    const formattedPlan = tier === "pro" ? "Pro" : "Standard";
+    let plan = "Standard";
+    let tier = "standard";
 
-    const productId =
-      data.product_id ||
-      payload.product_id ||
+    if (
+      rawPlan.includes("pro") ||
+      productId === "pdt_0NW7p1uWSg1OrN1USkgxw"
+    ) {
+      plan = "Pro";
+      tier = "pro";
+    } else if (
+      rawPlan.includes("creator") ||
+      rawPlan.includes("standard") ||
+      productId === "pdt_0NW7piAJRxvae3C8U4Phr"
+    ) {
+      plan = "Standard";
+      tier = "standard";
+    } else {
+      plan = "Standard";
+      tier = "standard";
+    }
+
+    const assignedProductId =
+      productId ||
       (tier === "pro" ? "pdt_0NW7p1uWSg1OrN1USkgxw" : "pdt_0NW7piAJRxvae3C8U4Phr");
 
     const subscriptionId =
@@ -48,8 +72,17 @@ export default async function handler(req, res) {
       payload.id ||
       `sub_${Date.now()}`;
 
+    // 4. Extract Next Billing Date
+    const nextBillingDate =
+      data.next_billing_date ||
+      data.expires_at ||
+      data.next_billing_at ||
+      payload.next_billing_date ||
+      payload.expires_at ||
+      new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
     console.log(
-      `[Dodo Webhook] Processing email: "${customerEmail}", tier: "${tier}", subId: "${subscriptionId}", productId: "${productId}"`
+      `[Dodo Webhook] Processing email: "${customerEmail}", plan: "${plan}", subId: "${subscriptionId}", productId: "${assignedProductId}", nextBillingDate: "${nextBillingDate}"`
     );
 
     if (!customerEmail) {
@@ -60,7 +93,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // 4. Lookup Supabase Auth User ID matching customerEmail
+    // 5. Lookup Supabase Auth User ID matching customerEmail
     let userId = null;
     const { data: usersList, error: listError } =
       await supabaseAdmin.auth.admin.listUsers();
@@ -80,13 +113,14 @@ export default async function handler(req, res) {
       }
     }
 
-    // 5. Upsert into subscriptions table with subscription_id and product_id
+    // 6. Upsert into subscriptions table with next_billing_date
     const subPayload = {
       subscription_id: subscriptionId,
-      product_id: productId,
+      product_id: assignedProductId,
       customer_email: customerEmail,
-      plan: formattedPlan,
+      plan: plan,
       status: "active",
+      next_billing_date: nextBillingDate,
       updated_at: new Date().toISOString(),
     };
 
@@ -105,10 +139,9 @@ export default async function handler(req, res) {
 
     console.log(`[Dodo Webhook] Subscriptions upsert successful for ${customerEmail}`);
 
-    // 6. Reset / Upsert freemium_usage credits if userId is available
+    // 7. Reset / Upsert freemium_usage credits if userId is available
     if (userId) {
-      const expiry = new Date();
-      expiry.setDate(expiry.getDate() + 30);
+      const expiry = new Date(nextBillingDate);
 
       const { data: usageData, error: usageError } = await supabaseAdmin
         .from("freemium_usage")
@@ -129,13 +162,14 @@ export default async function handler(req, res) {
       console.log(`[Dodo Webhook] Credit reset successful for user ${userId}`);
     }
 
-    // 7. Return Success
+    // 8. Return Success
     return res.status(200).json({
       success: true,
       updated: customerEmail,
-      plan: tier,
+      plan: plan,
       subscription_id: subscriptionId,
-      product_id: productId,
+      product_id: assignedProductId,
+      next_billing_date: nextBillingDate,
     });
   } catch (error) {
     console.error("Fatal Webhook Error:", error);
