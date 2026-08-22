@@ -484,7 +484,7 @@ Follow all platform output rules, gap resolution tiers, tone definitions, and ab
         .map(([title, fact]) => `- **${title}**: ${fact}`)
         .join("\n");
 
-      systemPrompt += `\n\nUSER-PROVIDED FACTS FOR CRITICAL GAPS:\n${factsText}\n\nThe user has provided specific facts to resolve the critical gaps. You MUST use these exact facts when weaving the gap resolutions into the final script. Do not invent any facts; use only the provided data.`;
+      systemPrompt += `\n\nUSER-PROVIDED FACTS FOR CRITICAL GAPS:\n${factsText}\n\nVERBATIM DATA & NUMERICAL INTEGRITY RULE:\nThe user has provided specific facts to resolve the critical gaps above. Every number, percentage, dollar amount, count, date, or figure inside the USER-PROVIDED FACTS block must be reproduced character-for-character as given. You must NOT round, rephrase, soften into descriptive language (e.g., "nearly half" instead of "47%"), or reword any number or figure in any way — even if it disrupts the sentence flow. If a fact does not fit naturally into a sentence, restructure the sentence around the fact, not the other way around.`;
     }
 
     /* VISUAL CUES — activated only for YouTube target platform */
@@ -535,6 +535,23 @@ Follow all platform output rules, gap resolution tiers, tone definitions, and ab
     });
 
     const renderedScript = scriptResp.content[0].text.trim();
+
+    /* POST-GENERATION VERBATIM NUMERIC VALIDATION */
+    if (Object.keys(resolvedCriticalGaps).length > 0) {
+      Object.entries(resolvedCriticalGaps).forEach(([gapTitle, userFact]) => {
+        if (!userFact || typeof userFact !== "string") return;
+        // Extract numeric & unit expressions (e.g., "$1.2M", "47%", "50K", "2026")
+        const numericMatches = userFact.match(/\$?\d+(?:[\.,]\d+)*(?:%|[a-zA-Z]+)?/g) || [];
+        numericMatches.forEach((numStr) => {
+          const cleanNumStr = numStr.trim();
+          if (cleanNumStr && !renderedScript.includes(cleanNumStr)) {
+            console.warn(
+              `[VERBATIM VALIDATION WARNING] Gap "${gapTitle}" expected numeric value "${cleanNumStr}" from user fact "${userFact}", but it was missing from generated script!`
+            );
+          }
+        });
+      });
+    }
 
     /* SAVE RESULT */
     const finalPayload = {
