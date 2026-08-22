@@ -39,9 +39,9 @@ export default async function handler(req, res) {
   const productId = PRODUCT_IDS[tier] || PRODUCT_IDS[normalizedTier];
 
   // 1. Session Creation Payload structure
-  const host = req.headers.host ? (req.headers.host.includes('localhost') ? `http://${req.headers.host}` : `https://${req.headers.host}`) : 'http://localhost:3001';
+  const host = req.headers.host ? (req.headers.host.includes('localhost') ? `http://${req.headers.host}` : `https://${req.headers.host}`) : 'https://gapgens.com';
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || host;
-  const returnUrl = `${baseUrl}/dashboard?session=success`;
+  const returnUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://gapgens.com'}/dashboard?session=success`;
 
   const sessionPayload = {
     product_id: productId,
